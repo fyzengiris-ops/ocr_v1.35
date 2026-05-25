@@ -1,0 +1,4 @@
+interface:
+  display_name: "页面逻辑审核"
+  short_description: "从产品设计和测试角度审核前端页面逻辑，并输出可回复选项的待确认问题。"
+  default_prompt: "请使用 page-logic-auditor 审核当前页面逻辑，输出页面名称和待确认问题。"

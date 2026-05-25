@@ -1,0 +1,4 @@
+interface:
+  display_name: "PRD 原型联动"
+  short_description: "实现右侧 PRD 阅读面板、拖拽分栏、点击定位、高亮和 activate 联动。"
+  default_prompt: "请使用 prd-prototype-integrator 在已有需求角标和锚点基础上实现右侧 PRD 面板联动。"

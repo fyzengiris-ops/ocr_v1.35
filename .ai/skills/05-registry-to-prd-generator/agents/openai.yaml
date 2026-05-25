@@ -1,0 +1,4 @@
+interface:
+  display_name: "注册表生成 Markdown PRD"
+  short_description: "在页面逻辑核对完成后，从需求注册表生成页面级 Markdown PRD 文档。"
+  default_prompt: "请使用 registry-to-prd-generator 基于已核对的需求注册表生成页面 Markdown PRD 文档。"

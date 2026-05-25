@@ -1,0 +1,4 @@
+interface:
+  display_name: "需求注册表生成"
+  short_description: "把已确认页面决策转换成可供页面标注、右侧 PRD 阅读面板和 Markdown PRD 共用的结构化需求注册表。"
+  default_prompt: "请使用 requirement-registry-writer 将已确认决策生成需求注册表。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "页面逻辑角标核对"
+  short_description: "为页面组件、按钮和字段添加需求编号角标与悬浮业务逻辑面板。"
+  default_prompt: "请使用 requirement-marker-reviewer 为已生成注册表的页面添加逻辑编号角标和悬浮核对面板。"

@@ -1130,6 +1130,7 @@ export function UploadQuestionDialog({
   const [questions, setQuestions] = useState<Question[]>([]);
   const [batchProcessing, setBatchProcessing] = useState(false); // 批量识别+匹配流程中，控制右侧显示进度还是题目
   const prevQuestionCountRef = useRef(0);
+  const customProgressRef = useRef(false); // handleBatchMove 已设置自定义进度文案
   const prevReRecognizingIdsRef = useRef<Set<number>>(new Set());
   const prevBatchProcessingRef = useRef(false);
   const maxQuestionIdRef = useRef(0);
@@ -2347,7 +2348,9 @@ export function UploadQuestionDialog({
             try {
               const chunk = JSON.parse(line.slice(6));
               if (chunk.type === 'progress') {
-                setProcessingMessage(chunk.data.message);
+                if (!customProgressRef.current) {
+                  setProcessingMessage(chunk.data.message);
+                }
               } else if (chunk.type === 'complete') {
                 const result = chunk.data.result;
                 const unmatchedAnswers = result.unmatchedAnswers as Array<{
@@ -2535,12 +2538,26 @@ export function UploadQuestionDialog({
     const reIds = new Set<number>();
     if (currentQuestions.length > 0) {
       selectedBoxes.forEach(box => {
-        if (!box.recognized) return; // 只看已被识别过的框
-        const existing = currentQuestions.find(q => q.boxId === box.id);
+        if (!box.recognized) return;
+        // 策略1：通过 q.box.id 精确匹配（最可靠）
+        let existing = currentQuestions.find(q => q.box && q.box.id === box.id);
+        // 策略2：通过 q.boxId 字段匹配
+        if (!existing) {
+          existing = currentQuestions.find(q => q.boxId === box.id);
+        }
+        // 策略3：通过题号匹配
+        if (!existing && box.questionNumber && box.questionNumber > 0) {
+          existing = currentQuestions.find(q => q.number === box.questionNumber);
+        }
         if (existing) reIds.add(existing.id);
       });
     }
-
+    console.log('[重识别检测] 开始');
+    console.log('[重识别检测] selectedBoxes.length:', selectedBoxes.length);
+    console.log('[重识别检测] 已识别框:', selectedBoxes.filter(b => b.recognized).map(b => ({ id: b.id, recognized: b.recognized, qNumber: b.questionNumber })));
+    console.log('[重识别检测] 未识别框:', selectedBoxes.filter(b => !b.recognized).map(b => ({ id: b.id, recognized: b.recognized })));
+    console.log('[重识别检测] 已有题目:', currentQuestions.map(q => ({ id: q.id, number: q.number, boxId: q.boxId, boxObjId: q.box?.id })));
+    console.log('[重识别检测] reIds结果:', [...reIds]);
     // 将已识别的选中框重置为未识别状态（重新识别）
     const hasRecognizedBoxes = selectedBoxes.some(b => b.recognized);
     if (hasRecognizedBoxes) {
@@ -2555,6 +2572,7 @@ export function UploadQuestionDialog({
     // 按框类型分离：题目框 vs 答案框
     const questionTypeBoxes = selectedBoxes.filter(b => b.type !== 'answer');
     const answerTypeBoxes = selectedBoxes.filter(b => b.type === 'answer');
+    console.log('[重识别检测] questionTypeBoxes:', questionTypeBoxes.length, 'reIds.size:', reIds.size, '→ newBoxCount:', questionTypeBoxes.length - reIds.size);
 
     if (questionTypeBoxes.length === 0 && answerTypeBoxes.length === 0) return;
 
@@ -2573,16 +2591,20 @@ export function UploadQuestionDialog({
       prevReRecognizingIdsRef.current = new Set(reIds);
       maxQuestionIdRef.current = currentQuestions.length > 0 ? Math.max(...currentQuestions.map(q => q.id)) : 0;
 
-      // 按场景设置进度提示文案
-      const newBoxCount = questionTypeBoxes.filter(b => !b.recognized).length;
+      // 按场景设置进度提示文案（进度已重置，用总数-重识别数推算新增数）
+      const newBoxCount = questionTypeBoxes.length - reIds.size;
       const reBoxCount = reIds.size;
       if (reBoxCount > 0 && newBoxCount > 0) {
         setProcessingMessage(`正在识别 ${questionTypeBoxes.length} 个区域（含 ${reBoxCount} 道重新识别）...`);
+        console.log('[重识别检测] 场景C：混合');
       } else if (reBoxCount > 0) {
         setProcessingMessage(`正在重新识别 ${reBoxCount} 道题目...`);
+        console.log('[重识别检测] 场景B：仅重识别');
       } else {
         setProcessingMessage(`正在识别 ${questionTypeBoxes.length} 个新增区域...`);
+        console.log('[重识别检测] 场景A：仅新增');
       }
+      customProgressRef.current = true;
     }
 
     if (hasAnswers && !hasQuestions) {
@@ -2749,7 +2771,12 @@ export function UploadQuestionDialog({
       }
       
       // 2. 调用 AI 识别（只发送裁剪后的图片）
-      setProcessingMessage(`正在 AI 识别 ${croppedImages.length} 个题目...`);
+      // 仅在没有自定义进度文案时才设置默认文案
+      if (!customProgressRef.current) {
+        setProcessingMessage(`正在 AI 识别 ${croppedImages.length} 个题目...`);
+      } else {
+        console.log('[重识别检测] 跳过默认文案，使用自定义场景文案');
+      }
       
       // 检查是否有裁剪图片
       if (croppedImages.length === 0) {
@@ -2816,7 +2843,9 @@ export function UploadQuestionDialog({
               const chunk = JSON.parse(jsonStr);
 
               if (chunk.type === 'progress') {
-                setProcessingMessage(chunk.data.message);
+                if (!customProgressRef.current) {
+                  setProcessingMessage(chunk.data.message);
+                }
               } else if (chunk.type === 'complete') {
                 const { result } = chunk.data;
                 setRecognitionResult(result.recognition);
@@ -3141,8 +3170,9 @@ export function UploadQuestionDialog({
         if (!hasError) {
           setProcessingMessage('');
         }
-        // 清除重识别状态
+        // 清除重识别状态和自定义进度标记
         setReRecognizingIds(new Set());
+        customProgressRef.current = false;
         // 一步模式识别完成后重置 batchProcessing
         if (workMode === 'single') {
           setBatchProcessing(false);
@@ -3180,6 +3210,7 @@ export function UploadQuestionDialog({
     setIsRecognitionPaused(false);
     pausedRecognitionRef.current = null;
     setReRecognizingIds(new Set());
+    customProgressRef.current = false;
     setIsProcessing(false);
     setProcessingMessage('');
     setBatchProcessing(false);
@@ -3240,7 +3271,9 @@ export function UploadQuestionDialog({
             try {
               const chunk = JSON.parse(line.slice(6));
               if (chunk.type === 'progress') {
-                setProcessingMessage(chunk.data.message);
+                if (!customProgressRef.current) {
+                  setProcessingMessage(chunk.data.message);
+                }
               } else if (chunk.type === 'complete') {
                 const result = chunk.data.result;
                 // result.globalMatches: Array<{ questionId: number; answer: string; analysis: string }>
@@ -5464,10 +5497,12 @@ export function UploadQuestionDialog({
         <div className="w-[54%] bg-[#f0f4f7] flex flex-col border-l">
           {/* ====== 增量识别进度条（有已有题目时，不遮挡内容）====== */}
           {batchProcessing && questions.length > 0 && (
-            <div className={cn(
+            <div data-req-anchor="box-step-incremental-progress" className={cn(
+              "relative",
               "px-4 py-2 border-b flex items-center gap-3",
               isRecognitionFailure ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
             )}>
+              {renderRequirementMarker('BOX_STEP-011', 'right-1 top-1', 99)}
               {isRecognitionFailure ? (
                 <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
               ) : (

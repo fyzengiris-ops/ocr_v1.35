@@ -1,13 +1,14 @@
 {
-  "name": "projects",
+  "name": "homework-system-ocr-v1-35",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "bash ./scripts/build.sh",
-    "dev": "bash ./scripts/dev.sh",
+    "build": "next build && tsup src/server.ts --format cjs --platform node --target node20 --outDir dist --no-splitting --no-minify",
+    "dev": "tsx watch src/server.ts",
     "preinstall": "npx only-allow pnpm",
     "lint": "eslint",
-    "start": "bash ./scripts/start.sh",
+    "prepare": "node -e \"console.log('prepare completed')\"",
+    "start": "node dist/server.js",
     "ts-check": "tsc -p tsconfig.json"
   },
   "dependencies": {

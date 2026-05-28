@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { 
   X, 
   Send, 
   Upload
 } from 'lucide-react';
+import { RequirementMarker } from '@/components/prd/RequirementMarker';
+import { aiChatPanelRegistry } from '@/requirements';
+import { createRequirementMap } from '@/components/prd/requirement-utils';
 
 interface AIChatPanelProps {
   onClose: () => void;
@@ -38,7 +41,13 @@ export function AIChatPanel({
   ]);
   const [inputValue, setInputValue] = useState('');
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const uploadedFileKeyRef = useRef<string | null>(null);
+  const requirementsById = useMemo(
+    () => createRequirementMap(aiChatPanelRegistry.requirements),
+    [],
+  );
 
   const quickActions = [
     { id: '布置试卷作业', label: '帮我布置试卷作业' },
@@ -51,26 +60,45 @@ export function AIChatPanel({
   }, [messages]);
 
   useEffect(() => {
-    // 当上传文件后，添加用户消息
-    if (uploadedFile && !messages.find(m => m.file)) {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: prev.length + 1,
-          type: 'user',
-          content: '帮我识别以下资料',
-          file: {
-            name: uploadedFile.name,
-            size: `${(uploadedFile.size / 1024).toFixed(2)}KB`,
-          },
-        },
-        {
-          id: prev.length + 2,
-          type: 'ai',
-          content: '好的，接下来我将为您识别文档资料，并为您转换成在线试卷',
-        },
-      ]);
+    if (!uploadedFile) {
+      return;
     }
+
+    const fileKey = `${uploadedFile.name}-${uploadedFile.size}-${uploadedFile.lastModified}`;
+
+    if (uploadedFileKeyRef.current === fileKey) {
+      return;
+    }
+
+    uploadedFileKeyRef.current = fileKey;
+
+    const timeoutId = setTimeout(() => {
+      setMessages((prev) => {
+        if (prev.some((message) => message.file)) {
+          return prev;
+        }
+
+        return [
+          ...prev,
+          {
+            id: prev.length + 1,
+            type: 'user',
+            content: '帮我识别以下资料',
+            file: {
+              name: uploadedFile.name,
+              size: `${(uploadedFile.size / 1024).toFixed(2)}KB`,
+            },
+          },
+          {
+            id: prev.length + 2,
+            type: 'ai',
+            content: '好的，接下来我将为您识别文档资料，并为您转换成在线试卷',
+          },
+        ];
+      });
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [uploadedFile]);
 
   const handleQuickAction = (action: string) => {
@@ -111,8 +139,36 @@ export function AIChatPanel({
     }, 500);
   };
 
+  const renderRequirementMarker = (
+    requirementId: string,
+    className: string,
+    displayNumber: number,
+  ) => {
+    const requirement = requirementsById.get(requirementId);
+
+    if (!requirement) {
+      return null;
+    }
+
+    return (
+      <RequirementMarker
+        requirement={requirement}
+        isOpen={selectedRequirementId === requirementId}
+        displayNumber={displayNumber}
+        className={className}
+        onToggle={() =>
+          setSelectedRequirementId((current) => (current === requirementId ? null : requirementId))
+        }
+        onClose={() => setSelectedRequirementId(null)}
+      />
+    );
+  };
+
   return (
-    <div className="fixed right-0 top-0 h-full w-80 bg-white shadow-2xl z-50 flex flex-col">
+    <div
+      className="fixed top-0 h-full w-80 bg-white shadow-2xl z-50 flex flex-col"
+      style={{ right: 'var(--prd-side-panel-right, 0px)' }}
+    >
       {/* 头部 */}
       <div className="flex items-center justify-between p-4 border-b">
         <h3 className="font-medium text-gray-800">AI小乐</h3>
@@ -126,9 +182,12 @@ export function AIChatPanel({
       </div>
 
       {/* 消息区域 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="relative flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
-          <div key={message.id} className={`${message.type === 'user' ? 'flex justify-end' : ''}`}>
+          <div
+            key={message.id}
+            className={message.type === 'user' ? 'flex justify-end' : ''}
+          >
             <div className={`${message.type === 'user' ? 'max-w-[80%]' : 'w-full'}`}>
               {message.type === 'ai' && (
                 <div className="flex items-start gap-2">
@@ -141,7 +200,9 @@ export function AIChatPanel({
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <div className="flex-1">
+                  <div
+                    className="relative flex-1"
+                  >
                     <div className="bg-gray-100 rounded-lg p-3 text-sm text-gray-700">
                       {message.content}
                     </div>
@@ -174,26 +235,38 @@ export function AIChatPanel({
 
         {/* 快捷功能按钮 */}
         {messages.length === 1 && (
-          <div className="space-y-2 flex flex-col items-start pl-10">
+          <div className="relative space-y-2 flex flex-col items-start pl-10">
             {quickActions.map((action) => (
-              <button
+              <div
                 key={action.id}
-                onClick={() => handleQuickAction(action.id)}
-                className={`py-2 px-4 rounded-lg text-sm transition-colors border ${
-                  activeAction === action.id
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                }`}
+                data-req-anchor={
+                  action.id === '识别作业资料'
+                    ? 'ai-chat-panel.quick-actions.recognize-homework'
+                    : undefined
+                }
+                className="relative"
               >
-                {action.label}
-              </button>
+                <button
+                  onClick={() => handleQuickAction(action.id)}
+                  className={`py-2 px-4 rounded-lg text-sm transition-colors border ${
+                    activeAction === action.id
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                  }`}
+                >
+                  {action.label}
+                </button>
+                {action.id === '识别作业资料' &&
+                  renderRequirementMarker('AI_CHAT_PANEL-004', '-right-4 -top-2', 1)}
+              </div>
             ))}
           </div>
         )}
       </div>
 
       {/* 输入区域 - 已禁用 */}
-      <div className="border-t p-4">
+      <div data-req-anchor="ai-chat-panel.input.disabled" className="relative border-t p-4">
+        {renderRequirementMarker('AI_CHAT_PANEL-005', 'right-2 top-2', 2)}
         <div className="flex items-center gap-2">
           <input
             type="text"

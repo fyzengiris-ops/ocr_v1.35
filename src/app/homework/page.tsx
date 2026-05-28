@@ -1,37 +1,33 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import Image from 'next/image';
 import { 
   Bell, 
   ChevronDown, 
-  MessageCircle, 
-  History, 
   PlusCircle,
-  X,
-  Send,
-  Upload
 } from 'lucide-react';
 import { AIChatPanel } from '@/components/AIChatPanel';
 import { ImportDocumentDialog } from '@/components/ImportDocumentDialog';
+import {
+  createActivationHandlerKey,
+  RequirementReaderShell,
+  useRequirementReader,
+} from '@/components/prd/RequirementReaderShell';
+import {
+  aiChatPanelRegistry,
+  boxRecognitionStepRegistry,
+  importDocumentDialogRegistry,
+  questionAnswerReviewStepRegistry,
+  uploadQuestionDialogSelectModeRegistry,
+} from '@/requirements';
 
 // 动态导入 UploadQuestionDialog，禁用 SSR（因为 react-pdf 使用了浏览器 API）
 const UploadQuestionDialog = dynamic(
   () => import('@/components/UploadQuestionDialog').then(mod => ({ default: mod.UploadQuestionDialog })),
   { ssr: false }
 );
-
-// 题目类型定义
-type Question = {
-  id: number;
-  number: number;
-  content: string;
-  status: 'matched' | 'pending_confirm' | 'no_answer';
-  answer?: string;
-  analysis?: string;
-};
 
 // 作业数据
 const homeworkList = [
@@ -76,6 +72,22 @@ const homeworkList = [
 ];
 
 export default function HomeworkPage() {
+  return (
+    <RequirementReaderShell
+      registries={[
+        aiChatPanelRegistry,
+        importDocumentDialogRegistry,
+        uploadQuestionDialogSelectModeRegistry,
+        boxRecognitionStepRegistry,
+        questionAnswerReviewStepRegistry,
+      ]}
+    >
+      <HomeworkPrototype />
+    </RequirementReaderShell>
+  );
+}
+
+function HomeworkPrototype() {
   const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
   const [showAIPanel, setShowAIPanel] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -83,19 +95,43 @@ export default function HomeworkPage() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [subjectInfo, setSubjectInfo] = useState<string>('');
   const [fileRanges, setFileRanges] = useState<{ rangeStart: number; rangeEnd: number }[]>([]);
-  const [selectedQuestions, setSelectedQuestions] = useState<number[]>([]);
-  const [currentStep, setCurrentStep] = useState<'idle' | 'upload' | 'subject' | 'select' | 'recognize' | 'edit'>('idle');
+  const [, setSelectedQuestions] = useState<number[]>([]);
+  const [, setCurrentStep] = useState<'idle' | 'upload' | 'subject' | 'select' | 'recognize' | 'edit'>('idle');
   const [isAppendUpload, setIsAppendUpload] = useState(false); // 是否为追加上传模式
+  const requirementReader = useRequirementReader();
 
   // 检测是否需要恢复上传录题弹窗（从试卷编辑页返回时）
   useEffect(() => {
     const shouldReopen = sessionStorage.getItem('leke_upload_dialog_open');
     if (shouldReopen === 'true') {
-      setShowUploadDialog(true);
+      const timeoutId = window.setTimeout(() => setShowUploadDialog(true), 0);
       sessionStorage.removeItem('leke_upload_dialog_open');
+      return () => window.clearTimeout(timeoutId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!requirementReader) {
+      return;
+    }
+
+    const cleanupHandlers = [
+      requirementReader.registerActivationHandler(createActivationHandlerKey('openPanel', 'AIChatPanel'), () => {
+        setShowAIPanel(true);
+      }),
+      requirementReader.registerActivationHandler(createActivationHandlerKey('openDialog', 'ImportDocumentDialog'), () => {
+        setCurrentStep('upload');
+        setShowImportDialog(true);
+      }),
+      requirementReader.registerActivationHandler(createActivationHandlerKey('openDialog', 'UploadQuestionDialog'), () => {
+        setCurrentStep('select');
+        setShowImportDialog(false);
+        setShowUploadDialog(true);
+      }),
+    ];
+
+    return () => cleanupHandlers.forEach((cleanup) => cleanup());
+  }, [requirementReader]);
 
   const handleAIButtonClick = (action: string) => {
     if (action === '识别作业资料') {
@@ -110,6 +146,9 @@ export default function HomeworkPage() {
       setUploadedFiles(prev => [...prev, ...files]);
       setFileRanges(prev => [...prev, ...(ranges || [])]);
       setIsAppendUpload(false);
+      // 标记：记录追加的文件数量和文件名，供子组件检测并弹出文件用途弹窗
+      sessionStorage.setItem('leke_appended_count', String(files.length));
+      sessionStorage.setItem('leke_appended_names', files.map(f => f.name).join('|'));
     } else {
       // 首次上传：替换文件列表
       setUploadedFiles(files);
@@ -140,7 +179,7 @@ export default function HomeworkPage() {
     setCurrentStep('recognize');
   };
 
-  const handleAddToPaper = (questions: Question[]) => {
+  const handleAddToPaper = () => {
     // 保存上传录题弹窗状态到 sessionStorage，以便「返回录题」时恢复
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('leke_upload_dialog_open', 'true');
@@ -294,6 +333,7 @@ export default function HomeworkPage() {
           type="button"
           onClick={() => setShowAIPanel(true)}
           className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full cursor-pointer"
+          style={{ right: 'var(--prd-floating-right, 1.5rem)' }}
         >
           <span className="sr-only">打开AI小乐</span>
           <div className="relative w-full h-full">

@@ -1,4 +1,57 @@
-# projects
+# homework-system-ocr-v1-35
+
+OCR 组卷流程专项优化项目，基于 Next.js 16、React 19、TypeScript、Tailwind CSS 4 和 shadcn/ui 构建。
+
+## 团队查看方式
+
+### 查看代码和产品文档
+
+- GitHub 仓库：`https://github.com/fyzengiris-ops/homework-system-ocr-v1-35`
+- 产品文档目录：`产品文档/`
+- 单页 PRD 与总 PRD：`产品文档/prd/`
+- 本地页面主入口：`/homework`
+
+### 本地运行前端页面
+
+```bash
+pnpm install
+pnpm dev
+```
+
+启动后访问：
+
+```txt
+http://localhost:5000/homework
+```
+
+### 环境变量
+
+复制 `.env.example` 为 `.env.local`，并填入真实服务密钥。真实密钥不要提交到 GitHub。
+
+```bash
+cp .env.example .env.local
+```
+
+关键环境变量：
+
+- `TENCENT_SECRET_ID` / `TENCENT_SECRET_KEY`：腾讯云智能切题服务。
+- `COZE_CODING_API_KEY` / `COZE_CODING_MODEL_BASE_URL`：AI 识别服务。
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL`：兼容 OpenAI 的 AI 识别服务备用配置。
+
+没有配置服务密钥时，页面仍可打开，但自动切题、AI 识别等接口能力会受限。
+
+### 部署给团队访问
+
+GitHub 只负责保存代码和文档。若团队需要通过一个公开浏览器地址访问页面，需要把仓库部署到 Vercel、Render 或其他支持 Next.js 的平台，并在部署平台中配置 `.env.example` 里的环境变量。
+
+推荐部署入口：
+
+1. 在 Vercel 中导入该 GitHub 仓库。
+2. Framework 选择 Next.js。
+3. Install Command 使用 `pnpm install`。
+4. Build Command 使用 `pnpm build`。
+5. 配置环境变量后部署。
+6. 部署完成后，把生成的访问地址发给团队。
 
 这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目，由扣子编程 CLI 创建。
 

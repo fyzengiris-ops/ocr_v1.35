@@ -45,7 +45,24 @@ interface PaperQuestion {
   analysis: string;
   knowledgePoints: string[];
   difficulty: string;
-  subQuestions?: { id: string; number?: number | string; answer?: string }[];
+  croppedImageData?: string;
+  originalCroppedImageData?: string;
+  optionCount?: number;
+  optionContents?: Record<string, string>;
+  blankCount?: number;
+  blankAnswers?: string[];
+  subQuestions?: {
+    id: string;
+    number?: number | string;
+    questionType?: string;
+    content?: string;
+    answer?: string;
+    analysis?: string;
+    optionCount?: number;
+    optionContents?: Record<string, string>;
+    blankCount?: number;
+    blankAnswers?: string[];
+  }[];
 }
 
 interface PageImageData {
@@ -109,12 +126,14 @@ function BatchAnswerDialog({
 
       if (isCompound && q.subQuestions && q.subQuestions.length > 0) {
         q.subQuestions.forEach((sq, idx) => {
+          const subType = sq.questionType || q.questionType;
+          const isSubJudge = subType === '判断题';
           states.push({
             id: q.id,
             subId: sq.id,
             number: String(sq.number || `${idx + 1}`),
-            questionType: q.questionType,
-            options: initOptions(defaultCount, isJudge, sq.answer),
+            questionType: subType,
+            options: initOptions(sq.optionCount || q.optionCount || (isSubJudge ? 2 : defaultCount), isSubJudge, sq.answer),
           });
         });
       } else {
@@ -403,9 +422,13 @@ export default function PaperEditPage() {
           return {
             ...q,
             number: mainNum,
+            knowledgePoints: q.knowledgePoints || [],
+            difficulty: q.difficulty || '容易',
+            blankAnswers: q.blankAnswers || [],
             subQuestions: q.subQuestions?.map((sq, sIdx) => ({
               ...sq,
               number: `${mainNum}.${sIdx + 1}`,
+              blankAnswers: sq.blankAnswers || [],
             })),
           };
         });
@@ -421,9 +444,17 @@ export default function PaperEditPage() {
 
   const handleBatchApply = (answersMap: Record<string, string>) => {
     setQuestions(prev =>
-      prev.map(q =>
-        answersMap[q.id] !== undefined ? { ...q, answer: answersMap[q.id] } : q
-      )
+      prev.map(q => {
+        const parentAnswer = answersMap[q.id];
+        const next: PaperQuestion = parentAnswer !== undefined ? { ...q, answer: parentAnswer } : { ...q };
+        if (q.subQuestions?.length) {
+          next.subQuestions = q.subQuestions.map(sq => {
+            const subAnswer = answersMap[`${q.id}__${sq.id}`];
+            return subAnswer !== undefined ? { ...sq, answer: subAnswer } : sq;
+          });
+        }
+        return next;
+      })
     );
   };
 
@@ -699,6 +730,47 @@ export default function PaperEditPage() {
                         </button>
                       </div>
 
+                      {q.subQuestions && q.subQuestions.length > 0 && (
+                        <div className="mb-3 space-y-2 rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5">
+                          {q.subQuestions.map((sq, idx) => {
+                            const subAnswer = sq.blankAnswers?.some(Boolean)
+                              ? sq.blankAnswers.map((item, answerIdx) => `空${answerIdx + 1}：${item || '请输入'}`).join('；')
+                              : sq.answer || '';
+                            return (
+                              <div key={sq.id} className="rounded bg-white px-3 py-2 border border-gray-100">
+                                <div className="mb-1.5 flex items-center gap-2 text-xs text-gray-500">
+                                  <span className="font-medium text-gray-700">{sq.number || `${q.number}.${idx + 1}`}</span>
+                                  {sq.questionType && <span>{sq.questionType}</span>}
+                                </div>
+                                {sq.content?.trim() && (
+                                  <div className="mb-1.5 text-sm text-gray-800 leading-relaxed">
+                                    <MathText text={sq.content} />
+                                  </div>
+                                )}
+                                <div className="mb-1 flex items-start gap-1.5">
+                                  <span className="text-sm text-gray-800 font-medium">【答案】</span>
+                                  {subAnswer.trim() ? (
+                                    <span className="text-sm text-gray-900 font-medium">{subAnswer}</span>
+                                  ) : (
+                                    <span className="text-sm text-gray-400 italic">请输入</span>
+                                  )}
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-sm text-gray-800 font-medium">【解析】</span>
+                                  {sq.analysis?.trim() ? (
+                                    <div className="text-sm text-gray-700 leading-relaxed">
+                                      <MathText text={sq.analysis} />
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-gray-400 italic">请输入</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {/* 知识点 */}
                       <div className="mb-2.5 flex items-center justify-between group">
                         <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
@@ -824,16 +896,7 @@ export default function PaperEditPage() {
         questions={questions}
         open={showBatchAnswer}
         onOpenChange={setShowBatchAnswer}
-        onApply={(answersMap: Record<string, string>) => {
-          setQuestions((prev: PaperQuestion[]) =>
-            prev.map((q: PaperQuestion) => {
-              const ans = answersMap[q.id];
-              if (!ans) return q;
-              return { ...q, answer: ans };
-            })
-          );
-          setShowBatchAnswer(false);
-        }}
+        onApply={handleBatchApplyInline}
       />
     </div>
   );

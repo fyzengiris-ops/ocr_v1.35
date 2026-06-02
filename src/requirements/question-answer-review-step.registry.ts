@@ -16,7 +16,7 @@ const moduleName = '识别作业资料';
 function activateReview(anchorId: string) {
   return [
     { type: 'openDialog' as const, label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep' as const, label: '切换到核查题目信息步骤', step: 'review' },
+    { type: 'setStep' as const, label: '切换到核查题目信息步骤', step: 'manual_link' },
     { type: 'scrollTo' as const, label: '定位页面对象', anchorId },
     { type: 'highlight' as const, label: '高亮页面对象', anchorId },
   ];

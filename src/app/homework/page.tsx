@@ -95,9 +95,11 @@ function HomeworkPrototype() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [subjectInfo, setSubjectInfo] = useState<string>('');
   const [fileRanges, setFileRanges] = useState<{ rangeStart: number; rangeEnd: number }[]>([]);
+  const [fileTotalPages, setFileTotalPages] = useState<number[]>([]);
   const [, setSelectedQuestions] = useState<number[]>([]);
   const [, setCurrentStep] = useState<'idle' | 'upload' | 'subject' | 'select' | 'recognize' | 'edit'>('idle');
   const [isAppendUpload, setIsAppendUpload] = useState(false); // 是否为追加上传模式
+  const [isSupplementUpload, setIsSupplementUpload] = useState(false); // 补充资料模式（隐藏资源库tab）
   const requirementReader = useRequirementReader();
 
   // 检测是否需要恢复上传录题弹窗（从试卷编辑页返回时）
@@ -140,11 +142,12 @@ function HomeworkPrototype() {
     }
   };
 
-  const handleFileUpload = (files: File[], subjInfo?: string, ranges?: { rangeStart: number; rangeEnd: number }[]) => {
+  const handleFileUpload = (files: File[], subjInfo?: string, ranges?: { rangeStart: number; rangeEnd: number }[], totalPages?: number[]) => {
     if (isAppendUpload) {
       // 追加模式：将新文件添加到已有文件列表后面
       setUploadedFiles(prev => [...prev, ...files]);
       setFileRanges(prev => [...prev, ...(ranges || [])]);
+      setFileTotalPages(prev => [...prev, ...(totalPages || [])]);
       setIsAppendUpload(false);
       // 标记：记录追加的文件数量和文件名，供子组件检测并弹出文件用途弹窗
       sessionStorage.setItem('leke_appended_count', String(files.length));
@@ -153,6 +156,7 @@ function HomeworkPrototype() {
       // 首次上传：替换文件列表
       setUploadedFiles(files);
       setFileRanges(ranges || []);
+      setFileTotalPages(totalPages || []);
       setSubjectInfo(subjInfo || '');
       setShowImportDialog(false);
       // 直接打开上传录题弹窗
@@ -164,6 +168,14 @@ function HomeworkPrototype() {
   const handleContinueUpload = () => {
     // 设置追加模式，然后打开文件选择弹窗
     setIsAppendUpload(true);
+    setIsSupplementUpload(false);
+    setShowImportDialog(true);
+  };
+
+  const handleSupplementUpload = () => {
+    // 补充资料模式：隐藏资源库tab，只显示本地上传
+    setIsAppendUpload(true);
+    setIsSupplementUpload(true);
     setShowImportDialog(true);
   };
 
@@ -172,6 +184,18 @@ function HomeworkPrototype() {
     setUploadedFiles([]);
     setIsAppendUpload(false);
     setShowImportDialog(true);
+  };
+
+  const handleDeleteFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    setFileRanges(prev => prev.filter((_, i) => i !== index));
+    setFileTotalPages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateFileRange = (index: number, rangeStart: number, rangeEnd: number) => {
+    setFileRanges(prev => prev.map((r, i) =>
+      i === index ? { rangeStart, rangeEnd } : r
+    ));
   };
 
   const handleQuestionSelect = (questions: number[]) => {
@@ -369,9 +393,12 @@ function HomeworkPrototype() {
           onClose={() => {
             setShowImportDialog(false);
             setIsAppendUpload(false);
+            setIsSupplementUpload(false);
           }}
           onUpload={handleFileUpload}
           defaultSubject={subjectInfo}
+          hideLibraryTab={isSupplementUpload}
+          existingPageCount={fileRanges.reduce((sum, r) => sum + (r.rangeEnd - r.rangeStart + 1), 0)}
         />
       )}
 
@@ -385,7 +412,11 @@ function HomeworkPrototype() {
           subjectInfo={subjectInfo}
           fileRanges={fileRanges}
           onContinueUpload={handleContinueUpload}
+          onSupplementUpload={handleSupplementUpload}
           onReupload={handleReupload}
+          onDeleteFile={handleDeleteFile}
+          onUpdateFileRange={handleUpdateFileRange}
+          fileTotalPages={fileTotalPages}
         />
       )}
     </div>

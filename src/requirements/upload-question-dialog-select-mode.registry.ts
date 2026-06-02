@@ -32,7 +32,7 @@ function activateFileRoleDialog(anchorId: string): ActivationStep[] {
 function activateBackButton(anchorId: string): ActivationStep[] {
   return [
     { type: 'openDialog', label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep', label: '切换到框选识别步骤', step: 'recognize_questions' },
+    { type: 'setStep', label: '切换到框选识别步骤', step: 'frame_and_review' },
     { type: 'scrollTo', label: '定位返回模式选择按钮', anchorId },
     { type: 'highlight', label: '高亮返回模式选择按钮', anchorId },
   ];

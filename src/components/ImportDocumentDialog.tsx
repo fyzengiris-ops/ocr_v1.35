@@ -11,8 +11,10 @@ import { importDocumentDialogRegistry } from '@/requirements';
 
 interface ImportDocumentDialogProps {
   onClose: () => void;
-  onUpload: (files: File[], subject?: string, fileRanges?: { rangeStart: number; rangeEnd: number }[]) => void;
+  onUpload: (files: File[], subject?: string, fileRanges?: { rangeStart: number; rangeEnd: number }[], fileTotalPages?: number[]) => void;
   defaultSubject?: string; // 默认学段学科（继续上传时记住上次选择）
+  hideLibraryTab?: boolean; // 隐藏资源库tab（补充资料场景）
+  existingPageCount?: number; // 补充资料时已有资料的已选页数
 }
 
 // 学段学科选项（合并）
@@ -50,7 +52,7 @@ interface MultiRangeState {
   tempRanges: Map<string, { start: number; end: number }>;
 }
 
-export function ImportDocumentDialog({ onClose, onUpload, defaultSubject }: ImportDocumentDialogProps) {
+export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLibraryTab, existingPageCount = 0 }: ImportDocumentDialogProps) {
   const [activeTab, setActiveTab] = useState<'local' | 'library'>('local');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -313,9 +315,9 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject }: Impo
     });
   };
 
-  // 计算弹窗中当前已选总页数
+  // 计算弹窗中当前已选总页数（含已有资料页数）
   const getMultiRangeTotal = () => {
-    let total = 0;
+    let total = existingPageCount;
     multiRange.tempRanges.forEach(({ start, end }) => {
       total += (end - start + 1);
     });
@@ -387,7 +389,8 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject }: Impo
         uploadedFiles.map(f => ({
           rangeStart: f.rangeStart,
           rangeEnd: f.rangeEnd,
-        }))
+        })),
+        uploadedFiles.map(f => f.totalPages ?? 0)
       );
     } else if (activeTab === 'library') {
       if (!selectedResourceId) {
@@ -418,8 +421,8 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject }: Impo
     (resource) => resource.totalPages <= 24,
   )?.id;
 
-  const totalOriginalPages = getTotalOriginalPages();
-  const totalSelectedPages = getCurrentSelectedTotal();
+  const totalOriginalPages = getTotalOriginalPages() + existingPageCount;
+  const totalSelectedPages = getCurrentSelectedTotal() + existingPageCount;
   const isOverLimit = totalOriginalPages > 24;
   const isSelectedOverLimit = totalSelectedPages > 24;
 
@@ -456,7 +459,8 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject }: Impo
           </button>
         </div>
 
-        {/* 标签切换 */}
+        {/* 标签切换（补充资料时隐藏资源库tab） */}
+        {!hideLibraryTab && (
         <div data-req-anchor="import-document-dialog.tabs" className="relative flex border-b bg-gray-50">
           {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-014', 'right-2 top-2', 14)}
           <button
@@ -480,11 +484,52 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject }: Impo
             我的资源库
           </button>
         </div>
+        )}
 
         {/* 内容区 */}
         <div className="p-6">
           {activeTab === 'local' && (
             <>
+              {/* 已有资料页数提示（补充资料场景） */}
+              {existingPageCount > 0 && (
+                (() => {
+                  const newSelectedPages = getCurrentSelectedTotal();
+                  const remaining = Math.max(0, 24 - existingPageCount - newSelectedPages);
+                  const isOver = (existingPageCount + newSelectedPages) > 24;
+                  // 场景文案：补充资料 vs 继续上传
+                  const IS_SUPP = hideLibraryTab;
+                  const labelOld = IS_SUPP ? '原有资料已识别' : '已选择';
+                  const labelNew = IS_SUPP ? '新补充识别' : '新选择';
+                  const labelRemain = IS_SUPP ? '最多还可补充' : '最多还可选择';
+                  const labelOverHint = IS_SUPP ? '请调整本次补充文件的识别范围' : '请调整本次选择文件的识别范围';
+
+                  if (uploadedFiles.length === 0) {
+                    return (
+                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-700">
+                          {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelRemain} <span className="font-medium">{Math.max(0, 24 - existingPageCount)}</span> 页（共限 24 页）
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className={cn(
+                      "mb-4 p-3 rounded-lg border",
+                      isOver ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+                    )}>
+                      <p className={cn("text-xs", isOver ? "text-red-700" : "text-blue-700")}>
+                        {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelNew} <span className="font-medium">{newSelectedPages}</span> 页
+                        {isOver ? (
+                          <>，超出上限 <span className="font-medium">{existingPageCount + newSelectedPages - 24}</span> 页，{labelOverHint}</>
+                        ) : (
+                          <>，{labelRemain} <span className="font-medium">{remaining}</span> 页（共限 24 页）</>
+                        )}
+                      </p>
+                    </div>
+                  );
+                })()
+              )}
+
               {/* 上传区域 */}
               <div
                 data-req-anchor="import-document-dialog.local.upload-zone"

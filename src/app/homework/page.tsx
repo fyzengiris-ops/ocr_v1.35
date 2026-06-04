@@ -16,11 +16,7 @@ import {
   useRequirementReader,
 } from '@/components/prd/RequirementReaderShell';
 import {
-  aiChatPanelRegistry,
-  boxRecognitionStepRegistry,
-  importDocumentDialogRegistry,
-  questionAnswerReviewStepRegistry,
-  uploadQuestionDialogSelectModeRegistry,
+  requirementRegistries,
 } from '@/requirements';
 
 // 动态导入 UploadQuestionDialog，禁用 SSR（因为 react-pdf 使用了浏览器 API）
@@ -73,15 +69,7 @@ const homeworkList = [
 
 export default function HomeworkPage() {
   return (
-    <RequirementReaderShell
-      registries={[
-        aiChatPanelRegistry,
-        importDocumentDialogRegistry,
-        uploadQuestionDialogSelectModeRegistry,
-        boxRecognitionStepRegistry,
-        questionAnswerReviewStepRegistry,
-      ]}
-    >
+    <RequirementReaderShell registries={requirementRegistries}>
       <HomeworkPrototype />
     </RequirementReaderShell>
   );

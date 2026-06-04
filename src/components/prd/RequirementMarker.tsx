@@ -112,6 +112,14 @@ export function RequirementMarker({
   const selectedByReader = requirementReader?.selectedRequirementId === requirement.id;
   const selectionRevision = requirementReader?.selectionRevision ?? 0;
   const displayLabel = displayNumber ? `需求 ${displayNumber}` : requirement.id;
+  const isNew = requirement.changeType === 'new' || requirement.changeType === 'changed';
+  const handleClose = () => {
+    if (selectedByReader) {
+      requirementReader?.setSelectedRequirement(null, null);
+    }
+
+    onClose();
+  };
 
   useEffect(() => {
     if (!selectedByReader) {
@@ -140,12 +148,19 @@ export function RequirementMarker({
         aria-label={`查看${displayLabel}业务逻辑`}
         className={cn(
           'flex h-5 min-w-7 items-center justify-center rounded-full border px-1.5 text-[10px] font-semibold shadow-sm transition-colors',
-          isOpen || selectedByReader
-            ? 'border-emerald-500 bg-emerald-600 text-white'
-            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100',
+          isNew && !isOpen && !selectedByReader
+            ? 'border-orange-300 bg-orange-50 text-orange-600 hover:border-orange-400 hover:bg-orange-100'
+            : isOpen || selectedByReader
+              ? 'border-emerald-500 bg-emerald-600 text-white'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100',
         )}
         onClick={(event) => {
           event.stopPropagation();
+          if (isOpen) {
+            handleClose();
+            return;
+          }
+
           if (!isOpen && buttonRef.current) {
             setPlacement(getCardPlacement(buttonRef.current.getBoundingClientRect()));
           }
@@ -161,7 +176,7 @@ export function RequirementMarker({
             requirement={requirement}
             placement={placement}
             displayNumber={displayNumber}
-            onClose={onClose}
+            onClose={handleClose}
           />,
           document.body,
         )}

@@ -7,7 +7,6 @@ import type { RequirementItem, RequirementRegistry } from '@/requirements';
 import { cn } from '@/lib/utils';
 import {
   createRequirementDisplayNumberMap,
-  filterUsefulItems,
   getRequirementDisplayGroups,
   isUsefulRequirementText,
   splitTextIntoReadableItems,
@@ -40,27 +39,6 @@ function ReadableText({ value }: { value: string }) {
   }
 
   return <p className="mt-1.5 leading-5 text-gray-700">{items[0] ?? value}</p>;
-}
-
-function InlineList({ label, items }: { label: string; items?: string[] }) {
-  const usefulItems = filterUsefulItems(items);
-
-  if (usefulItems.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-2">
-      <div className="text-[11px] font-medium text-gray-500">{label}</div>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        {usefulItems.map((item) => (
-          <span key={item} className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-600">
-            {item}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function DetailBlock({ title, children }: { title: string; children: ReactNode }) {
@@ -97,14 +75,26 @@ function RequirementDetail({
   return (
     <div className="space-y-3">
       <div>
-        {displayNumber !== null && (
-          <div className="text-[11px] font-semibold text-emerald-700">需求 {displayNumber}</div>
-        )}
-        <h3 className="mt-1 text-sm font-semibold text-gray-900">{requirement.title}</h3>
+        <div className="flex items-start gap-2">
+          {displayNumber !== null && (
+            <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold text-white">
+              {displayNumber}
+            </span>
+          )}
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900">{requirement.title}</h3>
+            <div className="mt-1 text-[11px] text-gray-500">{requirement.id}</div>
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
           <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
             {sourceTypeLabel(requirement.sourceType)}
           </span>
+          {requirement.changeDate && (
+            <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
+              {requirement.changeDate}
+            </span>
+          )}
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">{requirement.module}</span>
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">{requirement.objectName}</span>
         </div>
@@ -113,8 +103,6 @@ function RequirementDetail({
       <DetailBlock title="显示说明">
         <div className="font-medium text-gray-800">{requirement.display.title}</div>
         <ReadableText value={requirement.display.description} />
-        <InlineList label="涉及字段" items={requirement.display.fields} />
-        <InlineList label="涉及状态" items={requirement.display.states} />
       </DetailBlock>
 
       <DetailBlock title="操作说明">
@@ -209,18 +197,28 @@ export function RequirementPanel({
                                   )}
                                   onClick={() => onSelectRequirement(requirement)}
                                 >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <div className="text-[11px] font-semibold text-emerald-700">
-                                        {displayNumber}
-                                      </div>
-                                      <div className="mt-0.5 line-clamp-2 text-xs font-medium text-gray-800">
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      className={cn(
+                                        'mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
+                                        selected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700',
+                                      )}
+                                    >
+                                      {displayNumber}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="line-clamp-2 text-xs font-medium text-gray-800">
                                         {requirement.title}
                                       </div>
+                                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
+                                          {sourceTypeLabel(requirement.sourceType)}
+                                        </span>
+                                        <span className="truncate text-[10px] text-gray-400">
+                                          {requirement.id}
+                                        </span>
+                                      </div>
                                     </div>
-                                    <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
-                                      {sourceTypeLabel(requirement.sourceType)}
-                                    </span>
                                   </div>
                                 </button>
 

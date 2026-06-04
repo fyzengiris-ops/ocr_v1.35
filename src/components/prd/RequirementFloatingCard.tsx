@@ -134,8 +134,15 @@ export function RequirementFloatingCard({
         onPointerCancel={handleDragEnd}
       >
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold text-emerald-700">
-            {displayNumber ? `需求 ${displayNumber}` : requirement.id}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-emerald-700">
+              {displayNumber ? `需求 ${displayNumber} · ${requirement.id}` : requirement.id}
+            </span>
+            {requirement.changeDate && (
+              <span className="text-[10px] font-medium text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">
+                【{requirement.changeDate}】
+              </span>
+            )}
           </div>
           <div className="mt-0.5 text-sm font-semibold text-gray-900">{requirement.title}</div>
         </div>

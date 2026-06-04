@@ -64,7 +64,7 @@ function findAnchor(anchorId: string) {
 }
 
 async function waitForAnchor(anchorId: string) {
-  for (let index = 0; index < 20; index += 1) {
+  for (let index = 0; index < 40; index += 1) {
     const anchor = findAnchor(anchorId);
 
     if (anchor) {
@@ -143,7 +143,7 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
   }, []);
 
   const waitForActivationHandler = useCallback(async (key: string) => {
-    for (let index = 0; index < 20; index += 1) {
+    for (let index = 0; index < 40; index += 1) {
       const handler = activationHandlersRef.current.get(key);
 
       if (handler) {
@@ -270,7 +270,7 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
             <button
               type="button"
               aria-label="打开 PRD 需求说明"
-              className="fixed top-24 z-[55] flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200 bg-white text-emerald-700 shadow-lg hover:bg-emerald-50"
+              className="fixed top-24 z-[70] flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200 bg-white text-emerald-700 shadow-lg hover:bg-emerald-50"
               style={{ right: 'var(--prd-floating-right)' }}
               onClick={() => setPanelOpen(true)}
             >

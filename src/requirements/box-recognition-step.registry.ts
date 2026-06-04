@@ -6,14 +6,14 @@ const relatedFiles = [
 ];
 const decisionFile = 'docs/prd-workflow/decisions/box-recognition-step.decision.md';
 
-const pageName = '框选识别步骤';
-const route = '/homework → 识别作业资料 → 框选&识别步骤';
+const pageName = '选择识别内容步骤';
+const route = '/homework → 识别作业资料 → 选择识别内容步骤';
 const moduleName = '识别作业资料';
 
 function activateRecognizeQuestions(anchorId: string) {
   return [
     { type: 'openDialog' as const, label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep' as const, label: '切换到框选识别步骤', step: 'frame_and_review' },
+    { type: 'setStep' as const, label: '切换到选择识别内容步骤', step: 'frame_and_review' },
     { type: 'scrollTo' as const, label: '定位页面对象', anchorId },
     { type: 'highlight' as const, label: '高亮页面对象', anchorId },
   ];
@@ -33,30 +33,31 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
   pageName,
   route,
   module: moduleName,
-  description: '记录框选识别步骤页面的完整页面逻辑，覆盖统计信息栏、资料选框呈现、操作按钮、右侧空状态、文件用途弹窗、自动切题、继续/重新上传等交互边界。',
+  description: '记录选择识别内容步骤页面的完整页面逻辑，覆盖统计信息栏、资料选框呈现、操作按钮、右侧空状态、文件用途弹窗、自动切题、继续/重新上传等交互边界。',
   sourceDecisionFile: decisionFile,
   relatedFiles,
   requirements: [
     {
       id: 'BOX_STEP-001',
-      title: '统计信息栏：已框选/已选中/一键清空/全选',
+      title: '框选统计与右侧批量操作',
       sourceType: 'code+decision',
       objectType: 'region',
-      objectName: '框选统计信息栏',
+      objectName: '框选统计与右侧批量操作区',
       module: moduleName,
       pageName,
       route,
-      anchorId: 'box-step-info-bar',
+      anchorId: 'box-step-bulk-actions',
       anchorStatus: 'implemented',
-      activate: activateRecognizeQuestions('box-step-info-bar'),
+      activate: activateRecognizeQuestions('box-step-bulk-actions'),
       display: {
-        title: '统计信息栏',
-        description: '页面左侧资料区上方显示统计信息栏。左侧为操作提示文案「若系统框选有误或漏框选，可在资料上，以按住鼠标并拖动的方式框选区域」。右侧依次显示「已框选」数字卡片（绿色大号数字）、「已选中」数字卡片（蓝色大号数字）、「一键清空」按钮（有框时可用，hover变红）、「全选」复选框。自动切题中新文件时，数字和按钮变为灰色不可操作；切题完成后恢复。',
-        fields: ['已框选数字', '已选中数字', '一键清空按钮', '全选复选框', '操作提示文案'],
+        title: '框选统计与批量操作',
+        description: '资料页右上角显示当前框选数量文案「已选中 X 题 / 已框选 Y 题」。步骤3「选择识别内容」中，资料预览区右侧中部在自动切题完成后显示「开始识别」悬浮球和文字按钮，其下依次固定显示「全选」圆形图标按钮和文字按钮、「清空」圆形图标按钮和文字按钮；进入步骤4「核对识别结果」后，「全选」「清空」和右下角「更多工具」不再显示，仅保留继续识别相关入口。步骤3中该操作列与右下角「更多工具」分开展示，不覆盖资料页右上角内容。自动切题过程中，右侧全部悬浮操作暂不显示；切题完成后统一显示。',
+        fields: ['已选中数量', '已框选数量', '全选圆形按钮', '全选文字按钮', '清空圆形按钮', '清空文字按钮', '操作提示文案'],
         states: [
-          '正常态：数字高亮，按钮可操作',
-          '切题中（首次）：全选 checkbox 置灰，已框选/已选中数字正常',
-          '切题中（追加）：所有元素灰色，不可操作',
+          '正常态：自动切题完成后，资料页右上角显示数量，步骤3右侧开始识别、全选、清空和更多工具统一显示',
+          '核对识别结果步骤：隐藏全选、清空和更多工具',
+          '切题中（首次）：资料区显示切题加载态，右侧悬浮操作暂不显示',
+          '切题中（追加）：新增资料切题期间，右侧悬浮操作暂不显示',
           '无框时：已框选和已选中均为 0，一键清空和全选置灰',
         ],
       },
@@ -72,7 +73,7 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
         '已选中数字正确显示',
         '一键清空弹窗确认后可清空',
         '全选可一键选中/取消所有框',
-        '切题中按钮正确置灰',
+        '切题中右侧悬浮操作不提前显示',
       ],
       source: { decisionFile, decisionObject: '统计信息栏', relatedFiles },
     },
@@ -90,17 +91,17 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
       activate: activateRecognizeQuestions('box-step-start-btn'),
       display: {
         title: '开始识别按钮',
-        description: '按钮位于工具栏最右侧，当有选框选中，且无其他识别服务在进行中时，按钮高亮。按钮左侧显示当前识别方式标签（仅识别题目/识别题目和答案）。按钮文案为「开始识别」，有选中框时显示数量如「开始识别(3)」。',
-        fields: ['开始识别', '选中数量', '识别方式标签'],
+        description: '按钮位于资料预览区右侧中部，以绿色圆形悬浮球和下方「开始识别」文字按钮呈现。第 3 步有选框选中时可点击，点击后进入第 4 步「核对识别结果」并开始识别；第 4 步有新增选框选中时可继续点击，将新增识别结果追加到右侧。进入第 4 步手动关联答案状态后，该悬浮球和文字按钮隐藏。无选中框或处理中时置灰不可点击。',
+        fields: ['开始识别悬浮球', '开始识别文字按钮', '选中数量'],
         states: [
           '可用态：有选中框且不在处理中 → 绿色背景白色文字',
           '禁用态：无选中框、正在处理中或自动切题中 → 灰色背景灰色文字不可点击',
-          'review步骤：识别方式标签半透明（opacity-50）',
+          '手动关联答案状态：开始识别悬浮球和文字按钮隐藏',
         ],
       },
       operation: {
         title: '开始识别',
-        description: '1、点击「开始识别」后，系统根据已选中的框裁剪对应图片区域，调用 AI 进行题目内容识别。\n2、仅识别题目模式下，所有框按题目框处理，右边只展示题干。\n3、识别题目和答案模式下，题目框走完整识别流程，答案框走答案提取流程，右边展示题干+答案/解析。\n4、自动切题完成且有框时默认全选，按钮自动可用；无框时按钮置灰。',
+        description: '1、点击「开始识别」后，系统根据已选中的框裁剪对应图片区域，调用 AI 进行题目内容识别，并进入第 4 步「核对识别结果」。\n2、仅识别题目模式下，所有框按题目框处理，右边只展示题干。\n3、识别题目和答案模式下，题目框走完整识别流程，答案框走答案提取流程，右边展示题干+答案/解析。\n4、自动切题完成且有框时默认全选，按钮自动可用；无框时按钮置灰。第 4 步继续框选的新内容也可通过该按钮追加识别。',
         permission: '无额外权限限制',
         dataFlow: '将已选中的框、裁剪后的图片、识别模式和学科信息发送给 AI 识别服务',
         exceptions: '识别过程中显示「暂停识别」和「取消识别」按钮。暂停后可继续，取消后保留框选状态不变仅终止识别。识别失败时保留已有框选，右侧显示错误信息。',
@@ -232,7 +233,7 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
         title: '重新上传按钮',
         description: '按钮位于继续上传按钮左侧，灰色文字样式。点击弹出确认弹窗：「重新上传将清空当前资料、框选和识别方式，是否继续？」。弹窗有「取消」和「确认」按钮。',
         fields: ['重新上传', '确认弹窗'],
-        states: ['正常态：灰色文字可点击', 'review步骤隐藏'],
+        states: ['正常态：灰色文字可点击', '核对识别结果步骤隐藏'],
       },
       operation: {
         title: '重新上传',
@@ -245,7 +246,7 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
         '点击弹出确认弹窗',
         '确认后回到主页',
         '取消保持当前状态',
-        'review步骤不显示',
+        '核对识别结果步骤不显示',
       ],
       source: { decisionFile, decisionObject: '重新上传', relatedFiles },
     },
@@ -358,7 +359,7 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
       activate: activateRecognizeQuestions('box-step-selection-layer'),
       display: {
         title: '资料选框呈现',
-        description: '步骤2「选择识别内容」中，左侧资料预览区按页展示上传资料。每页右上角显示「本页 X 框 / 共 Y 框」。自动切题或手动画出的识别框覆盖在资料图片上：选中框为绿色边框和浅绿色底色，左上角显示绿色圆形勾选按钮；未选中框为灰色边框和浅色底色；未识别框右上角显示黄色「待识别」标签和红色删除按钮。每个框四角显示绿色调整手柄；跨页框显示「↓ 跨页」或「跨页续 ↑」提示；用户正在拖拽画框时，页面上显示绿色虚线临时框。',
+        description: '步骤3「选择识别内容」中，左侧资料预览区按页展示上传资料。每页右上角显示当前可见框选统计。自动切题或手动画出的识别框覆盖在资料图片上：选中框为绿色边框和浅绿色底色，左上角显示绿色圆形勾选按钮；未选中框为灰色边框和浅色底色；未识别框右上角显示黄色「待识别」标签和红色删除按钮。每个框四角显示绿色调整手柄；跨页框显示「↓ 跨页」或「跨页续 ↑」提示；用户正在拖拽画框时，页面上显示绿色虚线临时框。进入步骤4「核对识别结果」后，已完成识别的旧框不再显示，左侧仅显示用户继续框选的新内容。',
         fields: [
           '资料页图片',
           '本页框数提示',
@@ -380,7 +381,7 @@ export const boxRecognitionStepRegistry: RequirementRegistry = {
       },
       operation: {
         title: '资料选框操作',
-        description: '1、用户在资料空白处按住鼠标并拖动，可手动画出识别框，松开后新框默认选中。\n2、用户可点击左上角圆形勾选按钮切换单个框是否参与识别，也可用统计栏「全选」一次性切换所有框。\n3、用户可拖动框内部移动位置，拖动四角手柄调整大小；跨页资料支持从当前页拖到下一页形成跨页框。\n4、用户可点击红色删除按钮删除单个框，也可用统计栏「一键清空」删除全部框。\n5、点击「开始识别」时，只有当前选中的框进入识别；已识别框如果被重新选中并调整，会按新范围重新识别。',
+        description: '1、用户在资料空白处按住鼠标并拖动，可手动画出识别框，松开后新框默认选中。\n2、用户可点击左上角圆形勾选按钮切换单个框是否参与识别，也可用右侧批量操作区「全选」一次性切换所有框。\n3、用户可拖动框内部移动位置，拖动四角手柄调整大小；跨页资料支持从当前页拖到下一页形成跨页框。\n4、用户可点击红色删除按钮删除单个框，也可用右侧批量操作区「一键清空」删除全部框。\n5、点击「开始识别」时，只有当前选中的框进入识别；已识别框如果被重新选中并调整，会按新范围重新识别。',
         permission: '无额外权限限制',
         dataFlow: '识别框来自自动切题结果或用户手动画框。框的位置、大小、所在页、选中状态和识别状态会持续留在本次识别流程中；开始识别时，系统只读取已选中的框并裁剪对应资料区域，识别完成后把题目数据展示到右侧核对区，同时取消已识别框的选中状态。用户从步骤3返回步骤2时，框选区域和已识别题目继续保留，只清空选中状态，便于重新选择或调整后再次识别。',
         exceptions: '自动切题失败或未切出内容时，页面保留手动画框能力；用户取消识别时，已框选区域和选中状态不被清空；用户删除单个框或一键清空后，对应框不再参与后续识别。',

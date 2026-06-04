@@ -463,6 +463,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
         {!hideLibraryTab && (
         <div data-req-anchor="import-document-dialog.tabs" className="relative flex border-b bg-gray-50">
           {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-014', 'right-2 top-2', 14)}
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-017', 'right-8 top-2', 17)}
           <button
             className={`flex-1 py-3 text-sm transition-colors ${
               activeTab === 'local'
@@ -505,7 +506,8 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
 
                   if (uploadedFiles.length === 0) {
                     return (
-                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div data-req-anchor="import-document-dialog.local.existing-page-hint" className="relative mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 18)}
                         <p className="text-xs text-blue-700">
                           {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelRemain} <span className="font-medium">{Math.max(0, 24 - existingPageCount)}</span> 页（共限 24 页）
                         </p>
@@ -513,10 +515,11 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                     );
                   }
                   return (
-                    <div className={cn(
-                      "mb-4 p-3 rounded-lg border",
+                    <div data-req-anchor="import-document-dialog.local.existing-page-hint" className={cn(
+                      "relative mb-4 p-3 rounded-lg border",
                       isOver ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
                     )}>
+                      {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 18)}
                       <p className={cn("text-xs", isOver ? "text-red-700" : "text-blue-700")}>
                         {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelNew} <span className="font-medium">{newSelectedPages}</span> 页
                         {isOver ? (
@@ -892,12 +895,19 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
         >
           {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-015', 'right-28 top-2', 15)}
           {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-016', 'right-3 top-2', 16)}
-          {validationError && (
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-020', 'right-14 top-2', 20)}
+          {uploadedFiles.some(f => f.isDetecting) ? (
+            <span data-req-anchor="import-document-dialog.footer.detection-status" className="relative text-xs text-blue-500 flex items-center gap-1 mr-auto">
+              {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-019', '-right-2 -top-4', 19)}
+              <Loader2 className="w-3 h-3 animate-spin" />
+              正在检测文件页数...
+            </span>
+          ) : validationError ? (
             <span className="text-sm text-red-500 flex items-center gap-1 mr-auto">
               <AlertCircle className="w-4 h-4" />
               {validationError}
             </span>
-          )}
+          ) : null}
           <button
             onClick={onClose}
             className="px-6 py-2 border rounded text-gray-600 hover:bg-gray-50"

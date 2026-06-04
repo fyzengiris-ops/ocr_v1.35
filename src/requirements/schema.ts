@@ -17,6 +17,8 @@ export type AnchorStatus = 'implemented' | 'planned';
 
 export type RequirementSourceType = 'code' | 'decision' | 'code+decision';
 
+export type RequirementChangeType = 'new' | 'changed' | 'unchanged';
+
 export type ActivationStep =
   | { type: 'navigate'; label: string; to: string }
   | { type: 'openPanel'; label: string; panel: string }
@@ -60,12 +62,16 @@ export interface RequirementSource {
 }
 
 export interface RequirementItem {
-  /** 中文名称：需求编号；用途：稳定引用编号；使用方：Skill3、Skill4 */
+  /** 中文名称：需求编号；用途：稳定引用编号；使用方：Skill3、Skill4、Skill5 */
   id: string;
-  /** 中文名称：需求标题；用途：右侧 PRD 列表和 Markdown PRD 标题；使用方：Skill3、Skill4 */
+  /** 中文名称：需求标题；用途：右侧 PRD 列表和 Markdown PRD 标题；使用方：Skill3、Skill4、Skill5 */
   title: string;
-  /** 中文名称：来源类型；用途：区分代码事实、决策补充或二者合并；使用方：Skill2、Skill3、Skill4 */
+  /** 中文名称：来源类型；用途：区分代码事实、决策补充或二者合并；使用方：Skill2、Skill3、Skill4、Skill5 */
   sourceType: RequirementSourceType;
+  /** 中文名称：变更类型；用途：标记新增/变更/未变；Skill3 据此控制角标颜色（橙色=new/changed）；使用方：Skill3 */
+  changeType?: RequirementChangeType;
+  /** 中文名称：变更日期；用途：本次变更日期标注，如"6.2"；Skill3 在悬浮面板显示 [日期] 格式；使用方：Skill3 */
+  changeDate?: string;
   /** 中文名称：对象类型；用途：标识需求对应对象；使用方：Skill3、Skill4 */
   objectType: RequirementObjectType;
   /** 中文名称：对象名称；用途：页面上的具体对象名称；使用方：Skill3、Skill4 */

@@ -21,6 +21,34 @@ const emptyFallbacks = new Set([
 ]);
 
 const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConfig[]> = {
+  'upload-files-step': [
+    {
+      id: 'page-markers',
+      title: '步骤 1 页面角标',
+      requirementIds: [
+        'UPLOAD_FILES_STEP-001',
+        'UPLOAD_FILES_STEP-002',
+        'UPLOAD_FILES_STEP-003',
+        'UPLOAD_FILES_STEP-004',
+        'UPLOAD_FILES_STEP-005',
+        'UPLOAD_FILES_STEP-006',
+        'UPLOAD_FILES_STEP-007',
+        'UPLOAD_FILES_STEP-011',
+        'UPLOAD_FILES_STEP-013',
+        'UPLOAD_FILES_STEP-014',
+      ],
+    },
+    {
+      id: 'reserved-rules',
+      title: '步骤 1 暂未放置角标的规则',
+      requirementIds: [
+        'UPLOAD_FILES_STEP-008',
+        'UPLOAD_FILES_STEP-009',
+        'UPLOAD_FILES_STEP-010',
+        'UPLOAD_FILES_STEP-012',
+      ],
+    },
+  ],
   'question-answer-review-step': [
     {
       id: 'single-mode',

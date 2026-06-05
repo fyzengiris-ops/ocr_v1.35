@@ -12,6 +12,11 @@ export interface RequirementDisplayGroup {
   requirements: RequirementItem[];
 }
 
+export interface RequirementReadableSection {
+  category: string;
+  content: string | string[];
+}
+
 const emptyFallbacks = new Set([
   '无额外权限限制',
   '无额外数据流转',
@@ -20,7 +25,23 @@ const emptyFallbacks = new Set([
   '本对象仅展示',
 ]);
 
+const lowInformationStates = new Set(['正常显示', '正常态']);
+
 const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConfig[]> = {
+  'upload-question-dialog-select-mode': [
+    {
+      id: 'page-markers',
+      title: '步骤 2 页面角标',
+      requirementIds: [
+        'SELECT_MODE-007',
+        'SELECT_MODE-002',
+        'SELECT_MODE-003',
+        'SELECT_MODE-008',
+        'SELECT_MODE-005',
+        'SELECT_MODE-004',
+      ],
+    },
+  ],
   'upload-files-step': [
     {
       id: 'page-markers',
@@ -34,18 +55,6 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
         'UPLOAD_FILES_STEP-006',
         'UPLOAD_FILES_STEP-007',
         'UPLOAD_FILES_STEP-011',
-        'UPLOAD_FILES_STEP-013',
-        'UPLOAD_FILES_STEP-014',
-      ],
-    },
-    {
-      id: 'reserved-rules',
-      title: '步骤 1 暂未放置角标的规则',
-      requirementIds: [
-        'UPLOAD_FILES_STEP-008',
-        'UPLOAD_FILES_STEP-009',
-        'UPLOAD_FILES_STEP-010',
-        'UPLOAD_FILES_STEP-012',
       ],
     },
   ],
@@ -78,6 +87,14 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
         'REVIEW_STEP-010',
       ],
     },
+    {
+      id: 'answer-editing-rules',
+      title: '题型与答案编辑保护',
+      requirementIds: [
+        'REVIEW_STEP-017',
+        'REVIEW_STEP-018',
+      ],
+    },
   ],
 };
 
@@ -99,8 +116,21 @@ export function splitTextIntoReadableItems(value: string) {
     .filter(Boolean);
 }
 
-function createItem(category: string, content?: string) {
-  const normalized = content?.trim();
+function createSection(category: string, content?: string | string[]): RequirementReadableSection | null {
+  if (Array.isArray(content)) {
+    const items = filterUsefulItems(content);
+
+    if (items.length === 0) {
+      return null;
+    }
+
+    return {
+      category,
+      content: items,
+    };
+  }
+
+  const normalized = content?.trim() ?? '';
 
   if (!isUsefulRequirementText(normalized)) {
     return null;
@@ -110,6 +140,10 @@ function createItem(category: string, content?: string) {
     category,
     content: normalized,
   };
+}
+
+function filterUsefulStates(items?: string[]) {
+  return filterUsefulItems(items).filter((item) => !lowInformationStates.has(item));
 }
 
 export function getRequirementShortId(id: string) {
@@ -179,16 +213,19 @@ export function createRequirementDisplayNumberMap(registries: RequirementRegistr
 }
 
 export function getDisplaySections(requirement: RequirementItem) {
-  return [createItem('页面展示', requirement.display.description)].filter(
-    (item): item is { category: string; content: string } => Boolean(item),
+  return [
+    createSection('页面展示', requirement.display.description),
+    createSection('状态反馈', filterUsefulStates(requirement.display.states)),
+  ].filter(
+    (item): item is RequirementReadableSection => Boolean(item),
   );
 }
 
 export function getOperationSections(requirement: RequirementItem) {
   return [
-    createItem('操作规则', requirement.operation.description),
-    createItem('使用范围', requirement.operation.permission),
-    createItem('后续流程', requirement.operation.dataFlow),
-    createItem('异常边界', requirement.operation.exceptions),
-  ].filter((item): item is { category: string; content: string } => Boolean(item));
+    createSection('操作规则', requirement.operation.description),
+    createSection('使用范围', requirement.operation.permission),
+    createSection('后续流程', requirement.operation.dataFlow),
+    createSection('异常边界', requirement.operation.exceptions),
+  ].filter((item): item is RequirementReadableSection => Boolean(item));
 }

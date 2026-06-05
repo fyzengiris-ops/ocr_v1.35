@@ -462,8 +462,8 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
         {/* 标签切换（补充资料时隐藏资源库tab） */}
         {!hideLibraryTab && (
         <div data-req-anchor="import-document-dialog.tabs" className="relative flex border-b bg-gray-50">
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-014', 'right-2 top-2', 14)}
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-017', 'right-8 top-2', 17)}
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-014', 'right-2 top-2', 2)}
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-017', 'right-8 top-2', 3)}
           <button
             className={`flex-1 py-3 text-sm transition-colors ${
               activeTab === 'local'
@@ -507,7 +507,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                   if (uploadedFiles.length === 0) {
                     return (
                       <div data-req-anchor="import-document-dialog.local.existing-page-hint" className="relative mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 18)}
+                        {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 4)}
                         <p className="text-xs text-blue-700">
                           {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelRemain} <span className="font-medium">{Math.max(0, 24 - existingPageCount)}</span> 页（共限 24 页）
                         </p>
@@ -519,7 +519,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                       "relative mb-4 p-3 rounded-lg border",
                       isOver ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
                     )}>
-                      {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 18)}
+                      {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 4)}
                       <p className={cn("text-xs", isOver ? "text-red-700" : "text-blue-700")}>
                         {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelNew} <span className="font-medium">{newSelectedPages}</span> 页
                         {isOver ? (
@@ -544,7 +544,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-002', 'right-2 top-2', 2)}
+                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-002', 'right-2 top-2', 5)}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -568,8 +568,8 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                   data-req-anchor="import-document-dialog.local.file-list"
                   className="relative mt-4 space-y-2"
                 >
-                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-003', 'right-1 top-0', 3)}
-                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-004', 'right-10 top-0', 4)}
+                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-003', 'right-1 top-0', 6)}
+                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-004', 'right-10 top-0', 7)}
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">已上传文件（{uploadedFiles.length}个）</span>
                     {uploadedFiles.length > 1 && (
@@ -645,7 +645,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                   data-req-anchor="import-document-dialog.local.page-limit-warning"
                   className="relative mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg"
                 >
-                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-005', 'right-2 top-2', 5)}
+                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-005', 'right-2 top-2', 8)}
                   <p className="text-xs text-amber-700 flex items-start gap-1.5">
                     <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                     <span>检测到文件共{totalOriginalPages}页，最多支持识别24页，请删除部分文件或自定义选择文件识别范围后，再继续操作</span>
@@ -666,7 +666,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 data-req-anchor="import-document-dialog.subject"
                 className="relative mt-4 flex items-center gap-2"
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', 7)}
+                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', 9)}
                 <span className="text-sm text-gray-600">学段学科<span className="text-red-500">*</span>：</span>
                 <div className="relative">
                   <button
@@ -724,12 +724,10 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
 
               {/* 资源列表 */}
               <div data-req-anchor="import-document-dialog.library.range-draft" className="relative">
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-013', 'right-11 top-2', 13)}
               <div
                 data-req-anchor="import-document-dialog.library.list"
                 className="relative border rounded-lg max-h-64 overflow-y-auto"
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-008', 'right-2 top-2', 8)}
                 {filteredResources.map((resource) => {
                   const isSelected = selectedResourceId === resource.id;
                   const isOverLimit = resource.totalPages > 24;
@@ -791,8 +789,6 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                             }
                             className="relative inline-flex items-center"
                           >
-                            {resource.id === firstVisibleWithinLimitResourceId &&
-                              renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-009', '-right-8 -top-2', 9)}
                             共{resource.totalPages}页
                           </span>
                         )}
@@ -821,7 +817,6 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                     data-req-anchor="import-document-dialog.library.over-limit-warning"
                     className="relative mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg"
                   >
-                    {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-010', 'right-2 top-2', 10)}
                     <p className="text-xs text-amber-700 flex items-start gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                       <span>该资料共{res.totalPages}页，最多支持识别24页，请选择需要识别的页码范围后，再继续操作</span>
@@ -848,7 +843,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 data-req-anchor="import-document-dialog.subject"
                 className="relative mt-4 flex items-center gap-2"
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', 7)}
+                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', 9)}
                 <span className="text-sm text-gray-600">学段学科<span className="text-red-500">*</span>：</span>
                 <div className="relative">
                   <button
@@ -893,12 +888,12 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
           data-req-anchor="import-document-dialog.submit-handoff"
           className="relative flex justify-end items-center gap-3 p-4 border-t"
         >
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-015', 'right-28 top-2', 15)}
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-016', 'right-3 top-2', 16)}
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-020', 'right-14 top-2', 20)}
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-015', 'right-28 top-2', 10)}
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-016', 'right-3 top-2', 11)}
+          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-020', 'right-14 top-2', 12)}
           {uploadedFiles.some(f => f.isDetecting) ? (
             <span data-req-anchor="import-document-dialog.footer.detection-status" className="relative text-xs text-blue-500 flex items-center gap-1 mr-auto">
-              {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-019', '-right-2 -top-4', 19)}
+              {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-019', '-right-2 -top-4', 13)}
               <Loader2 className="w-3 h-3 animate-spin" />
               正在检测文件页数...
             </span>
@@ -942,7 +937,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
             data-req-anchor="import-document-dialog.local.range-dialog"
             className="relative bg-white rounded-lg shadow-xl w-[520px] max-w-[90vw] max-h-[80vh] flex flex-col"
           >
-            {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-006', 'right-10 top-3', 6)}
+            {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-006', 'right-10 top-3', 14)}
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="font-medium text-gray-800">选择识别范围</h3>
               <button onClick={handleMultiRangeCancel} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-gray-100">
@@ -1053,7 +1048,6 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
             data-req-anchor="import-document-dialog.library.range-dialog"
             className="relative bg-white rounded-lg shadow-xl w-[460px] max-w-[90vw]"
           >
-            {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-011', 'right-10 top-3', 11)}
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="font-medium text-gray-800">选择识别范围</h3>
               <button onClick={() => setShowLibraryRangeDialog(false)} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-gray-100">

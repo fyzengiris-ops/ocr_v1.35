@@ -20,22 +20,13 @@ function activateUploadFilesStep(anchorId: string): ActivationStep[] {
   ];
 }
 
-function activateModifyFilesEntry(anchorId: string): ActivationStep[] {
-  return [
-    { type: 'openDialog', label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep', label: '切换到选择识别内容步骤', step: 'frame_and_review' },
-    { type: 'scrollTo', label: '定位修改资料入口', anchorId },
-    { type: 'highlight', label: '高亮修改资料入口', anchorId },
-  ];
-}
-
 export const uploadFilesStepRegistry: RequirementRegistry = {
   registryId: 'upload-files-step',
   pageName,
   route,
   module: moduleName,
   description:
-    '记录步骤 1「上传资料」的完整页面逻辑，包括从后续步骤返回后的资料管理、空态上传、文件列表、删除、追加、识别范围、24 页校验、重新处理、处理失败、下一步、加入试卷和关闭退出。',
+    '记录步骤 1「上传资料」的完整页面逻辑，包括资料管理、空态上传、文件列表、删除、追加、识别范围、24 页校验和下一步。',
   sourceDecisionFile: decisionFile,
   relatedFiles,
   requirements: [
@@ -96,9 +87,9 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
       display: {
         title: '已上传资料展示',
         description:
-          '已有资料时，页面展示「已上传资料」标题、文件总数和当前识别总页数。每份资料显示文件名称、文件大小、当前识别页数、文件总页数和删除入口。',
-        fields: ['已上传资料', '已上传 X 份文件，共 Y 页', '文件名称', '文件大小', '识别X页 / 共Y页', '删除按钮'],
-        states: ['已有资料状态', '文件名称过长时省略显示'],
+          '已有资料时，页面展示「已上传资料」标题、文件总数和当前识别总页数。每份资料显示文件名称、文件大小、当前识别页数、文件总页数和删除入口；资料处理失败时，失败状态应在对应文件行内提示，不单独拆成新的页面注释。',
+        fields: ['已上传资料', '已上传 X 份文件，共 Y 页', '文件名称', '文件大小', '识别X页 / 共Y页', '删除按钮', '处理失败提示'],
+        states: ['已有资料状态', '文件名称过长时省略显示', '文件处理失败状态'],
       },
       operation: {
         title: '资料列表用于统一管理',
@@ -106,12 +97,13 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
           '用户可以通过文件行中的识别页数入口调整范围，也可以通过删除入口移除资料。',
         permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
         dataFlow: '列表展示本次识别任务中已经提交的文件、当前识别范围和页数统计。',
-        exceptions: '如果暂未取得文件总页数，只展示当前已知的识别页数。',
+        exceptions: '如果暂未取得文件总页数，只展示当前已知的识别页数；如果资料处理失败，用户需要删除失败文件并重新上传有效资料。',
       },
       acceptance: [
         '已有资料时应显示文件数量和当前识别总页数。',
         '每份资料应显示文件名称和文件大小。',
         '取得文件页数后，应显示「识别X页 / 共Y页」。',
+        '处理失败的资料应在文件行内给出明确失败提示。',
       ],
       source: {
         decisionFile,
@@ -219,16 +211,16 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
       display: {
         title: '继续上传按钮',
         description:
-          '已有资料时，底部操作栏左侧展示「继续上传」按钮。达到 24 页上限时，按钮展示为禁用状态。',
-        fields: ['继续上传'],
-        states: ['可用状态', '达到 24 页上限时的禁用状态'],
+          '已有资料时，底部操作栏左侧展示「继续上传」按钮。继续上传资料时，资料选择弹窗继续展示学段学科字段，并回显当前任务已选择的学段学科。达到 24 页上限时，按钮展示为禁用状态。',
+        fields: ['继续上传', '学段学科'],
+        states: ['可用状态', '达到 24 页上限时的禁用状态', '当前学科回显', '重新选择学科'],
       },
       operation: {
         title: '追加本地文件或资源库资料',
         description:
-          '1、用户点击「继续上传」后，可以追加本地文件，也可以从「我的资源库」选择资料。\n2、同一识别任务允许混合使用本地文件和资源库资料。\n3、追加资料属于资料修改，系统按照最新文件列表重新处理全部资料。',
-        permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
-        dataFlow: '新选择的资料追加到当前任务资料列表，并参与总页数统计和全部资料重新处理。',
+          '1、用户点击「继续上传」后，可以追加本地文件，也可以从「我的资源库」选择资料。\n2、同一识别任务允许混合使用本地文件和资源库资料。\n3、追加资料属于资料修改，系统按照最新文件列表重新处理全部资料。\n4、用户继续上传时仍可重新选择学段学科，不额外提示；新选择的学段学科对本次任务内全部已上传资料和新追加资料统一生效。',
+        permission: '学段学科选项沿用当前教师账号在乐课网任教的学段学科数据；入口权限沿用作业管理页中 AI 小乐识别资料入口。',
+        dataFlow: '新选择的资料追加到当前任务资料列表，并参与总页数统计和全部资料重新处理；学段学科作为当前任务统一学科，用于全部资料的后续识别请求和加入试卷。',
         exceptions: '当前任务已达到 24 页上限时，按钮不可用。',
       },
       acceptance: [
@@ -236,6 +228,8 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
         '继续上传时可以选择本地文件或资源库资料。',
         '同一任务可以混合使用两种资料来源。',
         '追加资料后应按照最新资料列表重新处理全部资料。',
+        '继续上传时应展示并回显当前任务学段学科。',
+        '新选择的学段学科应对当前任务内全部资料统一生效。',
       ],
       source: {
         decisionFile,
@@ -325,128 +319,6 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
       },
     },
     {
-      id: 'UPLOAD_FILES_STEP-008',
-      title: '修改资料入口与清空确认',
-      sourceType: 'code+decision',
-      changeType: 'new',
-      changeDate: '6.2',
-      objectType: 'button',
-      objectName: '修改资料按钮',
-      module: moduleName,
-      pageName,
-      route,
-      anchorId: 'upload-files-step.modify-files-entry',
-      anchorStatus: 'planned',
-      activate: activateModifyFilesEntry('upload-files-step.modify-files-entry'),
-      display: {
-        title: '修改资料入口与确认弹窗',
-        description:
-          '后续步骤的操作栏展示「修改资料」按钮。确认弹窗打开时，弹窗说明修改资料将清空当前已识别的题目和框选结果，并且需要重新选择识别方式。',
-        fields: ['修改资料', '确认修改资料吗？', '取消', '确认'],
-        states: ['无识别结果', '已有识别结果', '确认弹窗打开状态'],
-      },
-      operation: {
-        title: '返回步骤 1 修改资料',
-        description:
-          '1、用户只能通过「修改资料」入口返回步骤 1。\n2、已有识别结果时，系统先提示用户确认清理当前题目和框选结果；用户确认后再返回。\n3、无识别结果时，直接返回步骤 1。\n4、确认返回后，用户后续执行任意资料修改，均重新处理全部资料。',
-        permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
-        dataFlow: '确认后清空题目、答案、框选、文件用途和识别方式，保留当前资料供用户继续管理。',
-        exceptions: '用户取消确认时，保持当前页面和识别结果不变。',
-      },
-      acceptance: [
-        '后续步骤应提供「修改资料」入口。',
-        '已有识别结果时，点击「修改资料」应先展示清空提示。',
-        '确认后应返回步骤 1，并清理当前题目和框选结果。',
-        '取消后应保持当前状态。',
-      ],
-      source: {
-        decisionFile,
-        decisionObject: '交互：返回「上传资料」的入口 / 逻辑：修改资料后的重算范围',
-        relatedFiles,
-      },
-    },
-    {
-      id: 'UPLOAD_FILES_STEP-009',
-      title: '资料重新处理期间的操作控制',
-      sourceType: 'decision',
-      changeType: 'new',
-      changeDate: '6.2',
-      objectType: 'state',
-      objectName: '资料重新处理状态',
-      module: moduleName,
-      pageName,
-      route,
-      anchorId: 'upload-files-step.reprocessing',
-      anchorStatus: 'planned',
-      activate: activateUploadFilesStep('upload-files-step.reprocessing'),
-      display: {
-        title: '资料重新处理状态',
-        description:
-          '资料重新处理期间，页面保留资料管理区域，用户可以继续查看和修改文件列表。「下一步」展示为禁用状态。',
-        fields: ['资料列表', '下一步'],
-        states: ['重新处理进行中', '重新处理完成'],
-      },
-      operation: {
-        title: '按最新资料列表重新处理',
-        description:
-          '重新处理期间，用户仍可继续删除资料、调整识别范围或上传资料。系统始终以最新文件列表为准重新处理；处理完成前不允许进入下一步。',
-        permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
-        dataFlow: '每次资料修改都会更新待处理资料清单，完成后生成与最新资料一致的处理结果。',
-        exceptions: '用户连续修改资料时，不得使用过期文件列表生成后续结果。',
-      },
-      acceptance: [
-        '重新处理期间仍可修改资料。',
-        '重新处理期间「下一步」不可用。',
-        '连续修改后，系统应以最新资料列表生成结果。',
-      ],
-      source: {
-        decisionFile,
-        decisionObject: '状态：资料重新处理期间的页面操作',
-        relatedFiles,
-      },
-    },
-    {
-      id: 'UPLOAD_FILES_STEP-010',
-      title: '资料处理失败状态',
-      sourceType: 'decision',
-      changeType: 'new',
-      changeDate: '6.2',
-      objectType: 'state',
-      objectName: '文件处理失败状态',
-      module: moduleName,
-      pageName,
-      route,
-      anchorId: 'upload-files-step.processing-failure',
-      anchorStatus: 'planned',
-      activate: activateUploadFilesStep('upload-files-step.processing-failure'),
-      display: {
-        title: '文件处理失败提示',
-        description:
-          '资料生成预览或后续处理失败时，对应文件行使用红色强调状态，并显示「文件处理失败，请删除后重新上传」。',
-        fields: ['失败文件行', '文件处理失败，请删除后重新上传'],
-        states: ['处理成功', '处理失败'],
-      },
-      operation: {
-        title: '失败文件恢复处理',
-        description:
-          '用户需要删除失败文件并重新上传有效资料。存在失败文件时，不允许进入下一步。',
-        permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
-        dataFlow: '失败文件保留在列表中供用户识别和删除，但不进入后续识别流程。',
-        exceptions: '问题未处理前，「下一步」保持不可用。',
-      },
-      acceptance: [
-        '处理失败的文件行应标红。',
-        '失败文件行应显示已确认提示文案。',
-        '存在失败文件时，「下一步」应不可用。',
-        '删除失败文件后，用户可以重新上传资料。',
-      ],
-      source: {
-        decisionFile,
-        decisionObject: '异常：资料处理失败',
-        relatedFiles,
-      },
-    },
-    {
       id: 'UPLOAD_FILES_STEP-011',
       title: '下一步按钮',
       sourceType: 'code+decision',
@@ -470,7 +342,7 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
       operation: {
         title: '进入选择识别方式步骤',
         description:
-          '用户点击可用的「下一步」后，进入步骤 2「选择识别方式」。',
+          '用户点击可用的「下一步」后，进入步骤 2「选择识别方式」。资料修改后重新处理尚未完成时，不允许进入下一步。',
         permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
         dataFlow: '将当前任务资料、识别范围和统一学段学科交给后续识别方式选择步骤。',
         exceptions: '任一前置校验未通过时，不允许进入下一步。',
@@ -486,133 +358,22 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
         relatedFiles,
       },
     },
-    {
-      id: 'UPLOAD_FILES_STEP-012',
-      title: '继续上传时统一更新学段学科',
-      sourceType: 'code+decision',
-      changeType: 'new',
-      changeDate: '6.2',
-      objectType: 'field',
-      objectName: '继续上传时的学段学科字段',
-      module: moduleName,
-      pageName,
-      route,
-      anchorId: 'upload-files-step.continue-upload-subject',
-      anchorStatus: 'planned',
-      activate: activateUploadFilesStep('upload-files-step.continue-upload-subject'),
-      display: {
-        title: '继续上传时的学段学科',
-        description:
-          '继续上传资料时，资料选择弹窗继续展示学段学科字段，并回显当前任务已选择的学段学科。',
-        fields: ['学段学科'],
-        states: ['当前学科回显', '重新选择学科'],
-      },
-      operation: {
-        title: '新选择对当前任务全部资料生效',
-        description:
-          '用户继续上传时仍可重新选择学段学科，不额外提示。新选择的学段学科对本次任务内全部已上传资料和新追加资料统一生效。',
-        permission: '学段学科选项沿用当前教师账号在乐课网任教的学段学科数据。',
-        dataFlow: '新选择的学段学科作为当前任务统一学科，并用于全部资料的后续识别请求和加入试卷。',
-        exceptions: '本轮页面暂不开放该联动能力，但后续实现仍需遵循对当前任务全部资料统一生效的规则。',
-      },
-      acceptance: [
-        '继续上传时应展示并回显当前任务学段学科。',
-        '用户可以重新选择学段学科。',
-        '新选择应对当前任务内全部资料统一生效。',
-        '重新选择时不额外弹出提示。',
-      ],
-      source: {
-        decisionFile,
-        decisionObject: '字段：继续上传时的学段学科',
-        relatedFiles,
-      },
-    },
-    {
-      id: 'UPLOAD_FILES_STEP-013',
-      title: '加入试卷按钮状态',
-      sourceType: 'code+decision',
-      changeType: 'new',
-      changeDate: '6.2',
-      objectType: 'button',
-      objectName: '加入试卷按钮',
-      module: moduleName,
-      pageName,
-      route,
-      anchorId: 'upload-files-step.add-to-paper',
-      anchorStatus: 'implemented',
-      activate: activateUploadFilesStep('upload-files-step.add-to-paper'),
-      display: {
-        title: '加入试卷按钮状态',
-        description:
-          '顶部操作栏展示「加入试卷」按钮。只有在步骤 3 且已经存在题目数据时，按钮才高亮可用；步骤 1 中按钮不可用。',
-        fields: ['加入试卷'],
-        states: ['步骤 1 禁用', '步骤 3 无题目禁用', '步骤 3 有题目可用'],
-      },
-      operation: {
-        title: '限制加入试卷入口',
-        description:
-          '用户不能在步骤 1 直接加入试卷。只有完成后续识别并在步骤 3 生成题目数据后，才允许执行加入试卷。',
-        permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
-        dataFlow: '步骤 1 不向试卷提交题目数据。',
-        exceptions: '步骤 1 存在未提交题目数据时，也不得允许加入试卷。',
-      },
-      acceptance: [
-        '步骤 1 中「加入试卷」应不可用。',
-        '只有步骤 3 存在题目数据时，按钮才应高亮可用。',
-      ],
-      source: {
-        decisionFile,
-        decisionObject: '按钮：「加入试卷」状态',
-        relatedFiles,
-      },
-    },
-    {
-      id: 'UPLOAD_FILES_STEP-014',
-      title: '关闭识别任务',
-      sourceType: 'code+decision',
-      changeType: 'new',
-      changeDate: '6.2',
-      objectType: 'button',
-      objectName: '关闭按钮',
-      module: moduleName,
-      pageName,
-      route,
-      anchorId: 'upload-files-step.close',
-      anchorStatus: 'implemented',
-      activate: activateUploadFilesStep('upload-files-step.close'),
-      display: {
-        title: '关闭入口与确认弹窗',
-        description:
-          '顶部操作栏展示「关闭」按钮。当前任务已有资料时，确认弹窗提示「确认关闭吗？关闭后将退出本次识别任务，当前已上传的资料将不会保留」，并展示「取消」和「确认」按钮。',
-        fields: ['关闭', '确认关闭吗？', '确认关闭提示', '取消', '确认'],
-        states: ['无资料直接关闭', '已有资料确认关闭'],
-      },
-      operation: {
-        title: '按是否已有资料确认退出',
-        description:
-          '1、当前任务已有资料时，用户点击「关闭」需要先确认；确认后退出本次识别任务，并清理当前已上传资料。\n2、当前任务没有资料时，用户点击「关闭」直接退出，不展示确认弹窗。\n3、用户取消确认时，保持当前任务不变。',
-        permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
-        dataFlow: '确认关闭后清理本次识别任务中的资料和未提交结果。',
-        exceptions: '用户取消关闭时，不清理任何资料。',
-      },
-      acceptance: [
-        '已有资料时点击「关闭」，应展示已确认提示文案。',
-        '无资料时点击「关闭」，应直接退出。',
-        '确认关闭后，应退出任务并清理当前资料。',
-        '取消关闭后，应保留当前任务。',
-      ],
-      source: {
-        decisionFile,
-        decisionObject: '按钮：「关闭」',
-        relatedFiles,
-      },
-    },
   ],
   excludedDecisions: [
     {
       objectName: '步骤 2、步骤 3 和步骤 4',
       reason: '不属于本轮上传资料步骤页范围，由对应页面单独审核和沉淀。',
       sourceDecision: '暂不处理',
+    },
+    {
+      objectName: '关闭识别任务',
+      reason: '当前上传资料步骤页前端已移除关闭按钮，不再作为本页右侧 PRD 注释展示。',
+      sourceDecision: '按钮：「关闭」',
+    },
+    {
+      objectName: '加入试卷按钮状态',
+      reason: '加入试卷入口归属核对识别结果步骤，已由核对识别结果页需求覆盖，不再在上传资料步骤页重复展示。',
+      sourceDecision: '按钮：「加入试卷」状态',
     },
   ],
 };

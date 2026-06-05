@@ -14,6 +14,7 @@ import {
 
 interface RequirementPanelProps {
   registries: RequirementRegistry[];
+  displayNumberRegistries?: RequirementRegistry[];
   selectedRequirementId: string | null;
   onSelectRequirement: (requirement: RequirementItem) => void;
   onClose: () => void;
@@ -121,13 +122,14 @@ function RequirementDetail({
 
 export function RequirementPanel({
   registries,
+  displayNumberRegistries,
   selectedRequirementId,
   onSelectRequirement,
   onClose,
 }: RequirementPanelProps) {
   const displayNumbersByRequirementId = useMemo(
-    () => createRequirementDisplayNumberMap(registries),
-    [registries],
+    () => createRequirementDisplayNumberMap(displayNumberRegistries ?? registries),
+    [displayNumberRegistries, registries],
   );
 
   return (

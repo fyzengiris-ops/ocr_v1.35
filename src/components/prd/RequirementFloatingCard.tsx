@@ -31,11 +31,14 @@ function SectionValue({ value }: { value: string | string[] }) {
 
   if (items.length > 1) {
     return (
-      <ul className="mt-1.5 list-disc space-y-1.5 pl-4 leading-5">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
+      <ol className="mt-1.5 space-y-1.5 leading-5">
+        {items.map((item, index) => (
+          <li key={`${item}-${index}`} className="flex gap-1.5">
+            <span className="shrink-0 text-[11px] font-semibold text-emerald-700">{index + 1}、</span>
+            <span>{item}</span>
+          </li>
         ))}
-      </ul>
+      </ol>
     );
   }
 

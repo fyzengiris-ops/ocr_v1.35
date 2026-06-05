@@ -25,6 +25,7 @@ interface RequirementReaderContextValue {
   highlightedAnchorId: string | null;
   selectionRevision: number;
   setSelectedRequirement: (requirementId: string | null, anchorId?: string | null) => void;
+  setActiveRequirementIds: (requirementIds: string[] | null) => void;
   registerActivationHandler: (key: string, handler: ActivationHandler) => () => void;
 }
 
@@ -93,6 +94,7 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
   const [highlightedAnchorId, setHighlightedAnchorId] = useState<string | null>(null);
+  const [activeRequirementIds, setActiveRequirementIdsState] = useState<string[] | null>(null);
   const [selectionRevision, setSelectionRevision] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
   const activationHandlersRef = useRef(new Map<string, ActivationHandler>());
@@ -120,6 +122,10 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
     if (anchorId !== undefined) {
       setHighlightedAnchorId(anchorId);
     }
+  }, []);
+
+  const setActiveRequirementIds = useCallback((requirementIds: string[] | null) => {
+    setActiveRequirementIdsState(requirementIds);
   }, []);
 
   const registerActivationHandler = useCallback((key: string, handler: ActivationHandler) => {
@@ -234,6 +240,7 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
       highlightedAnchorId,
       selectionRevision,
       setSelectedRequirement,
+      setActiveRequirementIds,
       registerActivationHandler,
     }),
     [
@@ -241,9 +248,25 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
       registerActivationHandler,
       selectedRequirementId,
       selectionRevision,
+      setActiveRequirementIds,
       setSelectedRequirement,
     ],
   );
+
+  const panelRegistries = useMemo(() => {
+    if (!activeRequirementIds || activeRequirementIds.length === 0) {
+      return registries;
+    }
+
+    const activeRequirementIdSet = new Set(activeRequirementIds);
+
+    return registries
+      .map((registry) => ({
+        ...registry,
+        requirements: registry.requirements.filter((requirement) => activeRequirementIdSet.has(requirement.id)),
+      }))
+      .filter((registry) => registry.requirements.length > 0);
+  }, [activeRequirementIds, registries]);
 
   return (
     <RequirementReaderContext.Provider value={contextValue}>
@@ -294,7 +317,8 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
               <GripVertical className="h-4 w-4" />
             </div>
             <RequirementPanel
-              registries={registries}
+              registries={panelRegistries}
+              displayNumberRegistries={registries}
               selectedRequirementId={selectedRequirementId}
               onSelectRequirement={activateRequirement}
               onClose={() => setPanelOpen(false)}

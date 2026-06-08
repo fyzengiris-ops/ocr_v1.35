@@ -7,7 +7,7 @@ const relatedFiles = [
   'src/lib/pdf-processor.ts',
 ];
 
-const pageName = '识别作业资料弹窗';
+const pageName = '资料导入与范围确认';
 const route = '/homework';
 const moduleName = '识别作业资料';
 const decisionFile = 'docs/prd-workflow/decisions/import-document-dialog.decision.md';
@@ -18,7 +18,7 @@ export const importDocumentDialogRegistry: RequirementRegistry = {
   route,
   module: moduleName,
   description:
-    '记录识别作业资料弹窗的完整页面逻辑，覆盖本地上传、我的资源库选择、学段学科、页数校验、识别范围、确认取消和提交到后续上传录题流程的边界。',
+    '记录资料导入与范围确认的完整页面逻辑，覆盖本地上传、我的资源库选择、学段学科、页数校验、识别范围、确认取消和提交到后续上传录题流程的边界。',
   sourceDecisionFile: decisionFile,
   relatedFiles,
   requirements: [

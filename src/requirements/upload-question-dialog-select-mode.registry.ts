@@ -5,15 +5,15 @@ const relatedFiles = [
   'src/app/homework/page.tsx',
 ];
 
-const pageName = '资料场景方式选择';
-const route = '/homework → 识别作业资料 → 资料场景方式选择步骤';
+const pageName = '选择识别方式';
+const route = '/homework → 识别作业资料 → 选择识别方式';
 const moduleName = '识别作业资料';
 const decisionFile = '产品文档/prd-workflow/decisions/select-mode-page.decision.md';
 
 function activateSelectModeAnchor(anchorId: string): ActivationStep[] {
   return [
     { type: 'openDialog', label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep', label: '切换到资料场景方式选择步骤', step: 'select_mode' },
+    { type: 'setStep', label: '切换到选择识别方式', step: 'select_mode' },
     { type: 'scrollTo', label: '定位页面对象', anchorId },
     { type: 'highlight', label: '高亮页面对象', anchorId },
   ];
@@ -22,7 +22,7 @@ function activateSelectModeAnchor(anchorId: string): ActivationStep[] {
 function activateFileRoleDialog(anchorId: string): ActivationStep[] {
   return [
     { type: 'openDialog', label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep', label: '切换到资料场景方式选择步骤', step: 'select_mode' },
+    { type: 'setStep', label: '切换到选择识别方式', step: 'select_mode' },
     { type: 'openDialog', label: '打开指定文件用途弹窗', dialog: 'SelectModeFileRoleDialog' },
     { type: 'scrollTo', label: '定位文件用途弹窗', anchorId },
     { type: 'highlight', label: '高亮文件用途弹窗', anchorId },
@@ -32,7 +32,7 @@ function activateFileRoleDialog(anchorId: string): ActivationStep[] {
 function activateFrameReviewAnchor(anchorId: string): ActivationStep[] {
   return [
     { type: 'openDialog', label: '打开识别作业资料弹窗', dialog: 'UploadQuestionDialog' },
-    { type: 'setStep', label: '切换到选择识别内容步骤', step: 'frame_and_review' },
+    { type: 'setStep', label: '切换到选择识别内容', step: 'frame_and_review' },
     { type: 'scrollTo', label: '定位页面对象', anchorId },
     { type: 'highlight', label: '高亮页面对象', anchorId },
   ];
@@ -44,7 +44,7 @@ export const uploadQuestionDialogSelectModeRegistry: RequirementRegistry = {
   route,
   module: moduleName,
   description:
-    '记录资料场景方式选择页面的完整页面逻辑，覆盖三种识别方式卡片、已上传文件列表、指定文件用途弹窗、返回修改资料或识别方式的确认规则，以及当前前端展示的流程口径。',
+    '记录步骤 2「选择识别方式」的完整页面逻辑，覆盖三种识别方式卡片、已上传文件列表、指定文件用途弹窗、返回修改资料或识别方式的确认规则，以及当前前端展示的流程口径。',
   sourceDecisionFile: decisionFile,
   relatedFiles,
   requirements: [
@@ -107,7 +107,7 @@ export const uploadQuestionDialogSelectModeRegistry: RequirementRegistry = {
         dataFlow: '用户选择的仅题目识别方式会传递给后续框选和识别流程，后续结果只保留题目内容，不要求答案或解析。',
         exceptions: '进入本页面前由上游保证已有待识别资料；本模式不处理答案和解析内容。',
       },
-      acceptance: ['点击卡片后直接进入选择识别内容步骤', '识别模式为仅识别题目', '多文件时不弹出指定文件用途弹窗', '卡片内「开始识别」不作为独立按钮处理'],
+      acceptance: ['点击卡片后直接进入选择识别内容', '识别模式为仅识别题目', '多文件时不弹出指定文件用途弹窗', '卡片内「开始识别」不作为独立按钮处理'],
       source: {
         decisionFile,
         decisionObject: '识别方式卡片结构 / 选择识别方式后的确认缓冲 / 识别方式卡片内「开始识别」示意',
@@ -141,7 +141,7 @@ export const uploadQuestionDialogSelectModeRegistry: RequirementRegistry = {
         dataFlow: '用户选择的同文件题目答案识别方式会传递给后续框选、识别、题目答案核对和答案关联流程。',
         exceptions: '本模式不需要分配文件用途；如果资料为题目和答案分文件存放，用户应选择「题目+答案（不同文件）」模式。',
       },
-      acceptance: ['点击卡片后直接进入选择识别内容步骤', '识别模式为题目+答案（同文件）', '多文件时不弹出指定文件用途弹窗', '卡片内「开始识别」不作为独立按钮处理'],
+      acceptance: ['点击卡片后直接进入选择识别内容', '识别模式为题目+答案（同文件）', '多文件时不弹出指定文件用途弹窗', '卡片内「开始识别」不作为独立按钮处理'],
       source: {
         decisionFile,
         decisionObject: '识别方式卡片结构 / 选择识别方式后的确认缓冲 / 识别方式卡片内「开始识别」示意',

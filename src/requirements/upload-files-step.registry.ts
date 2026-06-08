@@ -6,7 +6,7 @@ const relatedFiles = [
   'src/app/homework/page.tsx',
 ];
 
-const pageName = '上传资料步骤页';
+const pageName = '上传资料';
 const route = '/homework → 识别作业资料 → 步骤 1「上传资料」';
 const moduleName = '识别作业资料';
 const decisionFile = '产品文档/prd-workflow/decisions/upload-files-step.decision.md';
@@ -362,17 +362,17 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
   excludedDecisions: [
     {
       objectName: '步骤 2、步骤 3 和步骤 4',
-      reason: '不属于本轮上传资料步骤页范围，由对应页面单独审核和沉淀。',
+      reason: '不属于本轮「上传资料」范围，由对应页面单独审核和沉淀。',
       sourceDecision: '暂不处理',
     },
     {
       objectName: '关闭识别任务',
-      reason: '当前上传资料步骤页前端已移除关闭按钮，不再作为本页右侧 PRD 注释展示。',
+      reason: '当前「上传资料」前端已移除关闭按钮，不再作为本页右侧 PRD 注释展示。',
       sourceDecision: '按钮：「关闭」',
     },
     {
       objectName: '加入试卷按钮状态',
-      reason: '加入试卷入口归属核对识别结果步骤，已由核对识别结果页需求覆盖，不再在上传资料步骤页重复展示。',
+      reason: '加入试卷入口归属「核对识别结果」，已由核对识别结果页需求覆盖，不再在「上传资料」重复展示。',
       sourceDecision: '按钮：「加入试卷」状态',
     },
   ],

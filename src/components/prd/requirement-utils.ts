@@ -31,7 +31,7 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
   'upload-question-dialog-select-mode': [
     {
       id: 'page-markers',
-      title: '步骤 2 页面角标',
+      title: '选择识别方式',
       requirementIds: [
         'SELECT_MODE-007',
         'SELECT_MODE-002',
@@ -45,7 +45,7 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
   'upload-files-step': [
     {
       id: 'page-markers',
-      title: '步骤 1 页面角标',
+      title: '上传资料',
       requirementIds: [
         'UPLOAD_FILES_STEP-001',
         'UPLOAD_FILES_STEP-002',
@@ -58,15 +58,35 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
       ],
     },
   ],
+  'box-recognition-step': [
+    {
+      id: 'page-markers',
+      title: '选择识别内容',
+      requirementIds: [
+        'BOX_STEP-010',
+        'BOX_STEP-001',
+        'BOX_STEP-002',
+        'BOX_STEP-003',
+        'BOX_STEP-007',
+        'BOX_STEP-014',
+        'BOX_STEP-013',
+        'BOX_STEP-005',
+        'BOX_STEP-004',
+        'BOX_STEP-008',
+        'BOX_STEP-011',
+        'BOX_STEP-012',
+      ],
+    },
+  ],
   'question-answer-review-step': [
     {
       id: 'single-mode',
       title: '仅识别题目模式及通用核查',
       requirementIds: [
+        'REVIEW_STEP-006',
         'REVIEW_STEP-002',
         'REVIEW_STEP-013',
         'REVIEW_STEP-014',
-        'REVIEW_STEP-006',
         'REVIEW_STEP-007',
         'REVIEW_STEP-012',
         'REVIEW_STEP-008',
@@ -77,22 +97,14 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
       id: 'question-answer-mode',
       title: '题目+答案模式',
       requirementIds: [
-        'REVIEW_STEP-011',
         'REVIEW_STEP-001',
         'REVIEW_STEP-003',
         'REVIEW_STEP-015',
         'REVIEW_STEP-016',
-        'REVIEW_STEP-005',
-        'REVIEW_STEP-004',
-        'REVIEW_STEP-010',
-      ],
-    },
-    {
-      id: 'answer-editing-rules',
-      title: '题型与答案编辑保护',
-      requirementIds: [
         'REVIEW_STEP-017',
+        'REVIEW_STEP-005',
         'REVIEW_STEP-018',
+        'REVIEW_STEP-004',
       ],
     },
   ],

@@ -8,7 +8,7 @@ const relatedFiles = [
 
 export const aiChatPanelRegistry: RequirementRegistry = {
   registryId: 'ai-chat-panel',
-  pageName: 'AI 小乐侧边面板组件',
+  pageName: 'AI 小乐识别入口',
   route: 'component:AIChatPanel',
   module: 'AI 小乐',
   description:
@@ -23,7 +23,7 @@ export const aiChatPanelRegistry: RequirementRegistry = {
       objectType: 'button',
       objectName: '帮我识别作业资料',
       module: 'AI 小乐',
-      pageName: 'AI 小乐侧边面板组件',
+      pageName: 'AI 小乐识别入口',
       route: 'component:AIChatPanel',
       anchorId: 'ai-chat-panel.quick-actions.recognize-homework',
       anchorStatus: 'implemented',
@@ -75,7 +75,7 @@ export const aiChatPanelRegistry: RequirementRegistry = {
       objectType: 'region',
       objectName: '底部文字输入区',
       module: 'AI 小乐',
-      pageName: 'AI 小乐侧边面板组件',
+      pageName: 'AI 小乐识别入口',
       route: 'component:AIChatPanel',
       anchorId: 'ai-chat-panel.input.disabled',
       anchorStatus: 'implemented',

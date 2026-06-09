@@ -126,4 +126,6 @@ export interface RequirementRegistry {
   requirements: RequirementItem[];
   /** 中文名称：未纳入需求卡片的决策；用途：保留范围边界；使用方：Skill4 */
   excludedDecisions: ExcludedDecision[];
+  /** 中文名称：展示序号排序；用途：覆盖右侧面板的默认注册表顺序；使用方：Skill4 */
+  displayOrder?: string[];
 }

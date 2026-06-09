@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 import type { RequirementItem, RequirementRegistry } from '@/requirements';
@@ -127,6 +127,7 @@ export function RequirementPanel({
   onSelectRequirement,
   onClose,
 }: RequirementPanelProps) {
+  const [expandedRequirementId, setExpandedRequirementId] = useState<string | null>(null);
   const displayNumbersByRequirementId = useMemo(
     () => createRequirementDisplayNumberMap(displayNumberRegistries ?? registries),
     [displayNumberRegistries, registries],
@@ -137,7 +138,7 @@ export function RequirementPanel({
       <div className="shrink-0 flex items-start justify-between gap-3 border-b border-gray-200 p-3">
         <div>
           <div className="text-sm font-semibold text-gray-900">PRD 需求说明</div>
-          <div className="mt-0.5 text-[11px] text-gray-500">点击需求卡片可定位并高亮原型对象</div>
+          <div className="mt-0.5 text-[11px] text-gray-500">单击定位高亮，双击查看需求详情</div>
         </div>
         <button
           type="button"
@@ -198,6 +199,9 @@ export function RequirementPanel({
                                       : 'border-gray-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/40',
                                   )}
                                   onClick={() => onSelectRequirement(requirement)}
+                                  onDoubleClick={() => setExpandedRequirementId(
+                                    expandedRequirementId === requirement.id ? null : requirement.id
+                                  )}
                                 >
                                   <div className="flex items-start gap-2">
                                     <span
@@ -224,7 +228,7 @@ export function RequirementPanel({
                                   </div>
                                 </button>
 
-                                {selected && (
+                                {expandedRequirementId === requirement.id && (
                                   <div className="mt-2">
                                     <div className="mb-2 text-xs font-semibold text-emerald-800">当前需求详情</div>
                                     <RequirementDetail requirement={requirement} displayNumber={displayNumber} />

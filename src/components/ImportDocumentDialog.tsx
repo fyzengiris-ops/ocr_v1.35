@@ -4,17 +4,19 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { X, CloudUpload, FileText, Trash2, Search, AlertCircle, Loader2, ChevronDown } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { cn } from '@/lib/utils';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { RequirementMarker } from '@/components/prd/RequirementMarker';
 import { createActivationHandlerKey, useRequirementReader } from '@/components/prd/RequirementReaderShell';
 import { createRequirementMap } from '@/components/prd/requirement-utils';
-import { importDocumentDialogRegistry } from '@/requirements';
+import { importDocumentDialogRegistry, uploadFilesStepRegistry } from '@/requirements';
 
 interface ImportDocumentDialogProps {
   onClose: () => void;
   onUpload: (files: File[], subject?: string, fileRanges?: { rangeStart: number; rangeEnd: number }[], fileTotalPages?: number[]) => void;
   defaultSubject?: string; // 默认学段学科（继续上传时记住上次选择）
   hideLibraryTab?: boolean; // 隐藏资源库tab（补充资料场景）
-  existingPageCount?: number; // 补充资料时已有资料的已选页数
+  existingPageCount?: number;
+  inline?: boolean;
 }
 
 // 学段学科选项（合并）
@@ -52,7 +54,7 @@ interface MultiRangeState {
   tempRanges: Map<string, { start: number; end: number }>;
 }
 
-export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLibraryTab, existingPageCount = 0 }: ImportDocumentDialogProps) {
+export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLibraryTab, existingPageCount = 0, inline = false }: ImportDocumentDialogProps) {
   const [activeTab, setActiveTab] = useState<'local' | 'library'>('local');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -76,7 +78,10 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
   const requirementReader = useRequirementReader();
   const requirementsById = useMemo(
-    () => createRequirementMap(importDocumentDialogRegistry.requirements),
+    () => createRequirementMap([
+      ...importDocumentDialogRegistry.requirements,
+      ...uploadFilesStepRegistry.requirements,
+    ]),
     [],
   );
 
@@ -392,6 +397,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
         })),
         uploadedFiles.map(f => f.totalPages ?? 0)
       );
+      if (inline) setUploadedFiles([]);
     } else if (activeTab === 'library') {
       if (!selectedResourceId) {
         setValidationError('请选择资料');
@@ -405,6 +411,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
           ? [{ rangeStart: libraryRange.start, rangeEnd: libraryRange.end }]
           : undefined;
         onUpload([mockFile], selectedSubject, fileRanges);
+        if (inline) setSelectedResourceId(null);
       }
     }
   };
@@ -441,29 +448,53 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
       })())
   );
 
+  const UploadButton = () => (
+    <>
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff,.tif,.svg,.avif,.heic,.heif,.pdf,.doc,.docx"
+        multiple
+        onChange={handleFileSelect}
+      />
+      <div className="relative">
+        {inline && renderRequirementMarker('UPLOAD_FILES_STEP-004', '-right-1 -top-2', 4)}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center gap-1.5 flex-shrink-0"
+        >
+          <CloudUpload className="w-3.5 h-3.5" />
+          上传资料
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div
-      className="fixed inset-y-0 left-0 bg-black/50 z-[60] flex items-center justify-center"
-      style={{ right: 'var(--prd-side-panel-right, 0px)' }}
+      className={inline ? '' : 'fixed inset-y-0 left-0 bg-black/50 z-[60] flex items-center justify-center'}
+      style={inline ? undefined : { right: 'var(--prd-side-panel-right, 0px)' }}
     >
       <div
         data-req-anchor="import-document-dialog.container"
-        className="relative bg-white rounded-lg w-[560px] max-w-[90vw]"
+        className={inline ? 'relative bg-white rounded-lg border border-gray-200' : 'relative bg-white rounded-lg w-[560px] max-w-[90vw]'}
       >
-        {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-001', 'right-10 top-3', 1)}
-        {/* 头部 */}
+        {!inline && renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-001', 'right-10 top-3', 1)}
+        {!inline && (
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="font-medium text-gray-800">识别作业资料</h3>
           <button onClick={onClose} className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center text-white hover:bg-emerald-600">
             <X className="w-4 h-4" />
           </button>
         </div>
+        )}
 
         {/* 标签切换（补充资料时隐藏资源库tab） */}
         {!hideLibraryTab && (
         <div data-req-anchor="import-document-dialog.tabs" className="relative flex border-b bg-gray-50">
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-014', 'right-2 top-2', 2)}
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-017', 'right-8 top-2', 3)}
+          {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-005' : 'IMPORT_DOCUMENT_DIALOG-014', 'right-2 top-2', inline ? 2 : 2)}
           <button
             className={`flex-1 py-3 text-sm transition-colors ${
               activeTab === 'local'
@@ -491,13 +522,12 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
         <div className="p-6">
           {activeTab === 'local' && (
             <>
-              {/* 已有资料页数提示（补充资料场景） */}
+              {/* 已有资料页数提示 */}
               {existingPageCount > 0 && (
                 (() => {
                   const newSelectedPages = getCurrentSelectedTotal();
                   const remaining = Math.max(0, 24 - existingPageCount - newSelectedPages);
                   const isOver = (existingPageCount + newSelectedPages) > 24;
-                  // 场景文案：补充资料 vs 继续上传
                   const IS_SUPP = hideLibraryTab;
                   const labelOld = IS_SUPP ? '原有资料已识别' : '已选择';
                   const labelNew = IS_SUPP ? '新补充识别' : '新选择';
@@ -506,34 +536,80 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
 
                   if (uploadedFiles.length === 0) {
                     return (
-                      <div data-req-anchor="import-document-dialog.local.existing-page-hint" className="relative mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 4)}
-                        <p className="text-xs text-blue-700">
-                          {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelRemain} <span className="font-medium">{Math.max(0, 24 - existingPageCount)}</span> 页（共限 24 页）
-                        </p>
+                      <div className="mb-4 flex items-start gap-3">
+                        <span className="text-sm pt-1 flex-shrink-0 invisible">已上传文件：</span>
+                        <div className="flex-1 flex items-start gap-3">
+                          <div data-req-anchor="import-document-dialog.local.existing-page-hint" className="relative p-3 bg-blue-50 border border-blue-200 rounded-lg flex-1">
+                            {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-012' : 'IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', inline ? 7 : 4)}
+                            <p className="text-xs text-blue-700">
+                              {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelRemain} <span className="font-medium">{Math.max(0, 24 - existingPageCount)}</span> 页（共限 24 页）
+                            </p>
+                          </div>
+                          {inline && <UploadButton />}
+                        </div>
                       </div>
                     );
                   }
                   return (
-                    <div data-req-anchor="import-document-dialog.local.existing-page-hint" className={cn(
-                      "relative mb-4 p-3 rounded-lg border",
-                      isOver ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
-                    )}>
-                      {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', 4)}
-                      <p className={cn("text-xs", isOver ? "text-red-700" : "text-blue-700")}>
-                        {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelNew} <span className="font-medium">{newSelectedPages}</span> 页
-                        {isOver ? (
-                          <>，超出上限 <span className="font-medium">{existingPageCount + newSelectedPages - 24}</span> 页，{labelOverHint}</>
-                        ) : (
-                          <>，{labelRemain} <span className="font-medium">{remaining}</span> 页（共限 24 页）</>
-                        )}
-                      </p>
+                    <div className="mb-4 flex items-start gap-3">
+                      <span className="text-sm pt-1 flex-shrink-0 invisible">已上传文件：</span>
+                      <div className="flex-1 flex items-start gap-3">
+                        <div data-req-anchor="import-document-dialog.local.existing-page-hint" className={cn(
+                          "relative p-3 rounded-lg border flex-1",
+                          isOver ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+                        )}>
+                          {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-012' : 'IMPORT_DOCUMENT_DIALOG-018', 'right-2 top-2', inline ? 7 : 4)}
+                          <p className={cn("text-xs", isOver ? "text-red-700" : "text-blue-700")}>
+                            {labelOld} <span className="font-medium">{existingPageCount}</span> 页，{labelNew} <span className="font-medium">{newSelectedPages}</span> 页
+                            {isOver ? (
+                              <>，超出上限 <span className="font-medium">{existingPageCount + newSelectedPages - 24}</span> 页，{labelOverHint}</>
+                            ) : (
+                              <>，{labelRemain} <span className="font-medium">{remaining}</span> 页（共限 24 页）</>
+                            )}
+                          </p>
+                        </div>
+                        {inline && <UploadButton />}
+                      </div>
                     </div>
                   );
                 })()
               )}
 
-              {/* 上传区域 */}
+              {/* inline 模式：无已有文件时的页数提示 */}
+              {inline && existingPageCount === 0 && uploadedFiles.length > 0 && (() => {
+                const total = getCurrentSelectedTotal();
+                const remaining = Math.max(0, 24 - total);
+                const isOver = total > 24;
+                return (
+                  <div className="mb-4 flex items-start gap-3">
+                    <span className="text-sm pt-1 flex-shrink-0 invisible">已上传文件：</span>
+                    <div className="flex-1 flex items-start gap-3">
+                      <div className={cn(
+                        "relative p-3 rounded-lg border flex-1",
+                        isOver ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+                      )}>
+                        {renderRequirementMarker('UPLOAD_FILES_STEP-012', 'right-2 top-2', 7)}
+                        <p className={cn("text-xs", isOver ? "text-red-700" : "text-blue-700")}>
+                          本次选择 <span className="font-medium">{total}</span> 页
+                          {isOver ? (
+                            <>，超出上限 <span className="font-medium">{total - 24}</span> 页，请调整文件识别范围</>
+                          ) : (
+                            <>，还可选择 <span className="font-medium">{remaining}</span> 页（共限 24 页）</>
+                          )}
+                        </p>
+                      </div>
+                      <UploadButton />
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* inline 模式：无已有文件且无内部文件时，显示上传按钮 */}
+              {inline && existingPageCount === 0 && uploadedFiles.length === 0 && (
+                <div className="mb-4 flex justify-end"><UploadButton /></div>
+              )}
+
+              {/* 弹窗模式：保留虚线框 */}
+              {!inline && (
               <div
                 data-req-anchor="import-document-dialog.local.upload-zone"
                 className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer ${
@@ -544,7 +620,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-002', 'right-2 top-2', 5)}
+                {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-004' : 'IMPORT_DOCUMENT_DIALOG-002', 'right-2 top-2', inline ? 4 : 5)}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -561,46 +637,117 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                   支持PNG/JPG/JPEG/、DOC/DOCX、PDF格式的文件，一次最多支持识别24页内容
                 </p>
               </div>
+              )}
 
-              {/* 已上传文件列表 */}
-              {uploadedFiles.length > 0 && (
+              {/* 已上传文件：inline 模式 label-left 布局 */}
+              {inline ? (
+                <div className="mt-4 flex items-start gap-3">
+                  <span className="text-sm text-gray-600 pt-1 flex-shrink-0 relative">
+                    已上传文件：
+                    {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-002' : 'IMPORT_DOCUMENT_DIALOG-003', '-right-2 -top-2', inline ? 5 : 6)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {uploadedFiles.length > 0 ? (
+                      <div
+                        data-req-anchor="import-document-dialog.local.file-list"
+                        className="relative border rounded-lg divide-y max-h-48 overflow-y-auto"
+                      >
+                        {renderRequirementMarker('UPLOAD_FILES_STEP-014', '-left-2 -top-2', 6)}
+                        {uploadedFiles.map((uploadedFile, fileIndex) => (
+                          <div key={uploadedFile.id} className="flex items-center justify-between p-2.5 hover:bg-gray-50">
+                            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                              <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-gray-700 truncate">{uploadedFile.file.name}</div>
+                                <div className="text-xs text-gray-500 flex items-center gap-2">
+                                  {uploadedFile.isDetecting ? (
+                                    <span className="text-blue-500 flex items-center gap-1">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      检测中...
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenMultiRange(uploadedFile.id);
+                                      }}
+                                      className="text-xs text-blue-600 font-medium hover:text-blue-800 hover:underline cursor-pointer"
+                                    >
+                                      识别{uploadedFile.rangeEnd - uploadedFile.rangeStart + 1}页 / 共{uploadedFile.totalPages}页
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="relative">
+                              {fileIndex === 0 && renderRequirementMarker('UPLOAD_FILES_STEP-003', '-right-2 -top-2', 8)}
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <button
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-gray-400 hover:text-red-500 flex-shrink-0 ml-2"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="max-w-sm">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>确认删除该文件？</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      将移除「{uploadedFile.file.name}」，此操作不可撤销。
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>取消</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleRemoveFile(uploadedFile.id)}
+                                      className="bg-red-600 hover:bg-red-700 text-white"
+                                    >
+                                      确认删除
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="relative border-2 border-dashed border-gray-200 rounded-lg py-8 flex flex-col items-center justify-center text-gray-400">
+                        {renderRequirementMarker('UPLOAD_FILES_STEP-016', 'right-2 top-2', 3)}
+                        <FileText className="w-8 h-8 mb-1.5 opacity-30" />
+                        <p className="text-sm">暂无文件</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* 弹窗模式：保持原有文件列表布局 */
+                uploadedFiles.length > 0 && (
                 <div
                   data-req-anchor="import-document-dialog.local.file-list"
                   className="relative mt-4 space-y-2"
                 >
-                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-003', 'right-1 top-0', 6)}
-                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-004', 'right-10 top-0', 7)}
+                  {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-002' : 'IMPORT_DOCUMENT_DIALOG-003', 'right-1 top-0', inline ? 5 : 6)}
+                  {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-014' : 'IMPORT_DOCUMENT_DIALOG-004', 'right-10 top-0', inline ? 6 : 7)}
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">已上传文件（{uploadedFiles.length}个）</span>
                     {uploadedFiles.length > 1 && (
-                      <button
-                        onClick={() => setUploadedFiles([])}
-                        className="text-xs text-red-500 hover:text-red-600"
-                      >
+                      <button onClick={() => setUploadedFiles([])} className="text-xs text-red-500 hover:text-red-600">
                         清空全部
                       </button>
                     )}
                   </div>
                   <div className="border rounded-lg divide-y max-h-48 overflow-y-auto">
                     {uploadedFiles.map((uploadedFile, fileIndex) => (
-                      <div
-                        key={uploadedFile.id}
-                        className="flex items-center justify-between p-3 hover:bg-gray-50"
-                      >
+                      <div key={uploadedFile.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <div className="w-10 h-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
                             <FileText className="w-5 h-5 text-blue-600" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="text-sm text-gray-700 truncate">{uploadedFile.file.name}</div>
-                            <div
-                              data-req-anchor={
-                                fileIndex === 0
-                                  ? 'import-document-dialog.local.page-detection'
-                                  : undefined
-                              }
-                              className="text-xs text-gray-500 flex items-center gap-2"
-                            >
+                            <div className="text-xs text-gray-500 flex items-center gap-2">
                               <span>{formatFileSize(uploadedFile.file.size)}</span>
                               <span>·</span>
                               {uploadedFile.isDetecting ? (
@@ -610,10 +757,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                                 </span>
                               ) : (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenMultiRange(uploadedFile.id);
-                                  }}
+                                  onClick={(e) => { e.stopPropagation(); handleOpenMultiRange(uploadedFile.id); }}
                                   className="text-xs text-blue-600 font-medium hover:text-blue-800 hover:underline cursor-pointer"
                                 >
                                   识别{uploadedFile.rangeEnd - uploadedFile.rangeStart + 1}页 / 共{uploadedFile.totalPages}页
@@ -623,20 +767,36 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveFile(uploadedFile.id);
-                            }}
-                            className="text-gray-400 hover:text-red-500"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <button onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-red-500">
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="max-w-sm">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>确认删除该文件？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  将移除「{uploadedFile.file.name}」，此操作不可撤销。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleRemoveFile(uploadedFile.id)}
+                                  className="bg-red-600 hover:bg-red-700 text-white"
+                                >
+                                  确认删除
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
+                )
               )}
 
               {/* 总页数超限警告（仅本地上传tab，仅当已选总页数也超限时显示） */}
@@ -645,7 +805,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                   data-req-anchor="import-document-dialog.local.page-limit-warning"
                   className="relative mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg"
                 >
-                  {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-005', 'right-2 top-2', 8)}
+                  {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-006' : 'IMPORT_DOCUMENT_DIALOG-005', 'right-2 top-2', inline ? 9 : 8)}
                   <p className="text-xs text-amber-700 flex items-start gap-1.5">
                     <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                     <span>检测到文件共{totalOriginalPages}页，最多支持识别24页，请删除部分文件或自定义选择文件识别范围后，再继续操作</span>
@@ -666,7 +826,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 data-req-anchor="import-document-dialog.subject"
                 className="relative mt-4 flex items-center gap-2"
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', 9)}
+                {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-008' : 'IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', inline ? 11 : 9)}
                 <span className="text-sm text-gray-600">学段学科<span className="text-red-500">*</span>：</span>
                 <div className="relative">
                   <button
@@ -843,7 +1003,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 data-req-anchor="import-document-dialog.subject"
                 className="relative mt-4 flex items-center gap-2"
               >
-                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', 9)}
+                {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-008' : 'IMPORT_DOCUMENT_DIALOG-007', 'right-0 -top-2', inline ? 11 : 9)}
                 <span className="text-sm text-gray-600">学段学科<span className="text-red-500">*</span>：</span>
                 <div className="relative">
                   <button
@@ -888,12 +1048,19 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
           data-req-anchor="import-document-dialog.submit-handoff"
           className="relative flex justify-end items-center gap-3 p-4 border-t"
         >
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-015', 'right-28 top-2', 10)}
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-016', 'right-3 top-2', 11)}
-          {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-020', 'right-14 top-2', 12)}
+          {inline
+            ? renderRequirementMarker('UPLOAD_FILES_STEP-011', 'right-28 top-2', 12)
+            : (
+              <>
+                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-015', 'right-28 top-2', 10)}
+                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-016', 'right-3 top-2', 11)}
+                {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-020', 'right-14 top-2', 12)}
+              </>
+            )
+          }
           {uploadedFiles.some(f => f.isDetecting) ? (
-            <span data-req-anchor="import-document-dialog.footer.detection-status" className="relative text-xs text-blue-500 flex items-center gap-1 mr-auto">
-              {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-019', '-right-2 -top-4', 13)}
+            <span data-req-anchor={inline ? undefined : "import-document-dialog.footer.detection-status"} className="relative text-xs text-blue-500 flex items-center gap-1 mr-auto">
+              {!inline && renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-019', '-right-2 -top-4', 13)}
               <Loader2 className="w-3 h-3 animate-spin" />
               正在检测文件页数...
             </span>
@@ -903,14 +1070,16 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
               {validationError}
             </span>
           ) : null}
+          {!inline && (
+            <button
+              onClick={onClose}
+              className="px-6 py-2 border rounded text-gray-600 hover:bg-gray-50"
+            >
+              取消
+            </button>
+          )}
           <button
-            onClick={onClose}
-            className="px-6 py-2 border rounded text-gray-600 hover:bg-gray-50"
-          >
-            取消
-          </button>
-          <button
-            data-req-anchor="import-document-dialog.footer.confirm"
+            data-req-anchor={inline ? undefined : "import-document-dialog.footer.confirm"}
             onClick={handleConfirm}
             disabled={!canConfirm}
             className={`px-6 py-2 rounded text-white ${
@@ -919,7 +1088,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
                 : 'bg-gray-300 cursor-not-allowed'
             }`}
           >
-            确定
+            {inline ? '下一步' : '确定'}
           </button>
         </div>
       </div>
@@ -937,7 +1106,7 @@ export function ImportDocumentDialog({ onClose, onUpload, defaultSubject, hideLi
             data-req-anchor="import-document-dialog.local.range-dialog"
             className="relative bg-white rounded-lg shadow-xl w-[520px] max-w-[90vw] max-h-[80vh] flex flex-col"
           >
-            {renderRequirementMarker('IMPORT_DOCUMENT_DIALOG-006', 'right-10 top-3', 14)}
+            {renderRequirementMarker(inline ? 'UPLOAD_FILES_STEP-007' : 'IMPORT_DOCUMENT_DIALOG-006', 'right-10 top-3', inline ? 10 : 14)}
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="font-medium text-gray-800">选择识别范围</h3>
               <button onClick={handleMultiRangeCancel} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-gray-100">

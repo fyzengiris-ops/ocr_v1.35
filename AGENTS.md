@@ -78,3 +78,4 @@ TENCENT_SECRET_KEY=你的腾讯云SecretKey
 - 页面逻辑角标核对：当用户要求在页面组件、按钮、字段、文案旁添加需求数字角标、稳定锚点、点击悬浮业务逻辑面板，用于分批核对页面逻辑时，必须先读取 `.ai/skills/03-requirement-marker-reviewer/SKILL.md`。
 - PRD 原型联动：当用户要求实现右侧 PRD 阅读面板、拖拽分栏、点击 PRD 需求定位页面对象、高亮组件、执行需求激活路径时，必须先读取 `.ai/skills/04-prd-prototype-integrator/SKILL.md`，并同时读取 `.ai/skills/04-prd-prototype-integrator/references/layout-and-activation.md`。
 - 注册表生成 Markdown PRD：当用户要求基于已核对的需求注册表生成 Markdown PRD、页面级 PRD、供 AI 阅读的 PRD 文档时，必须先读取 `.ai/skills/05-registry-to-prd-generator/SKILL.md`，并同时读取 `.ai/skills/05-registry-to-prd-generator/references/prd-document-template.md`。
+- 需求注释表达清洗：当用户要求在需求注册表、页面数字角标、悬浮需求面板、右侧 PRD 面板已经完成后，对已有 `display` / `operation` 注释做去重、压缩、维度归类、空兜底过滤或重复编号治理时，必须先读取 `.ai/skills/06-requirement-annotation-refiner/SKILL.md`；默认只处理用户指定的小范围 registry，不合并需求编号，不改变 `anchorId`、`anchorStatus`、`activate`、`sourceType` 等稳定字段。

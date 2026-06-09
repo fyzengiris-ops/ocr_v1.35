@@ -1,0 +1,4 @@
+interface:
+  display_name: "需求注释表达清洗"
+  short_description: "清洗已核对需求注释中的重复表达，保留原业务逻辑和角标联动。"
+  default_prompt: "请使用 $06-requirement-annotation-refiner 清洗指定页面已核对的需求注释表达。"

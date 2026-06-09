@@ -125,8 +125,8 @@ function HomeworkPrototype() {
 
   const handleAIButtonClick = (action: string) => {
     if (action === '识别作业资料') {
-      setCurrentStep('upload');
-      setShowImportDialog(true);
+      setCurrentStep('select');
+      setShowUploadDialog(true);
     }
   };
 
@@ -405,6 +405,12 @@ function HomeworkPrototype() {
           onDeleteFile={handleDeleteFile}
           onUpdateFileRange={handleUpdateFileRange}
           fileTotalPages={fileTotalPages}
+          onUploadFiles={(files, subject, ranges, totalPages) => {
+            setUploadedFiles(prev => [...prev, ...files]);
+            setFileRanges(prev => [...prev, ...(ranges || [])]);
+            setFileTotalPages(prev => [...prev, ...(totalPages || [])]);
+            if (subject) setSubjectInfo(subject);
+          }}
         />
       )}
     </div>

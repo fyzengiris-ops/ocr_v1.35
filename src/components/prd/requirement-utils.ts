@@ -48,12 +48,16 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
       title: '上传资料',
       requirementIds: [
         'UPLOAD_FILES_STEP-001',
-        'UPLOAD_FILES_STEP-002',
-        'UPLOAD_FILES_STEP-003',
-        'UPLOAD_FILES_STEP-004',
         'UPLOAD_FILES_STEP-005',
+        'UPLOAD_FILES_STEP-016',
+        'UPLOAD_FILES_STEP-004',
+        'UPLOAD_FILES_STEP-002',
+        'UPLOAD_FILES_STEP-014',
+        'UPLOAD_FILES_STEP-012',
+        'UPLOAD_FILES_STEP-003',
         'UPLOAD_FILES_STEP-006',
         'UPLOAD_FILES_STEP-007',
+        'UPLOAD_FILES_STEP-008',
         'UPLOAD_FILES_STEP-011',
       ],
     },
@@ -213,15 +217,27 @@ export function getRequirementDisplayGroups(registry: RequirementRegistry): Requ
 }
 
 export function getOrderedRequirementsForDisplay(registry: RequirementRegistry) {
-  return getRequirementDisplayGroups(registry).flatMap((group) => group.requirements);
+  const requirements = getRequirementDisplayGroups(registry).flatMap((group) => group.requirements);
+  if (registry.displayOrder && registry.displayOrder.length > 0) {
+    const orderMap = new Map(registry.displayOrder.map((id, i) => [id, i]));
+    return [...requirements].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+      const bi = orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+      return ai - bi;
+    });
+  }
+  return requirements;
 }
 
 export function createRequirementDisplayNumberMap(registries: RequirementRegistry[]) {
-  return new Map(
-    registries.flatMap((registry) =>
-      getOrderedRequirementsForDisplay(registry).map((requirement, index) => [requirement.id, index + 1] as const),
-    ),
-  );
+  const map = new Map<string, number>();
+  for (const registry of registries) {
+    const requirements = getOrderedRequirementsForDisplay(registry);
+    requirements.forEach((requirement, index) => {
+      map.set(requirement.id, index + 1);
+    });
+  }
+  return map;
 }
 
 export function getDisplaySections(requirement: RequirementItem) {

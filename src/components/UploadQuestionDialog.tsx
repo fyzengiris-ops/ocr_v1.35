@@ -24,6 +24,7 @@ import { uploadFilesStepRegistry } from '@/requirements/upload-files-step.regist
 import { uploadQuestionDialogSelectModeRegistry } from '@/requirements/upload-question-dialog-select-mode.registry';
 import { boxRecognitionStepRegistry } from '@/requirements/box-recognition-step.registry';
 import { questionAnswerReviewStepRegistry } from '@/requirements/question-answer-review-step.registry';
+import { ImportDocumentDialog } from '@/components/ImportDocumentDialog';
 import { MathText, MathEditable } from '@/lib/math-render';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -70,7 +71,11 @@ const uploadFilesRequirementIds = [
   'UPLOAD_FILES_STEP-005',
   'UPLOAD_FILES_STEP-006',
   'UPLOAD_FILES_STEP-007',
+  'UPLOAD_FILES_STEP-008',
   'UPLOAD_FILES_STEP-011',
+  'UPLOAD_FILES_STEP-012',
+  'UPLOAD_FILES_STEP-014',
+  'UPLOAD_FILES_STEP-016',
 ];
 
 const selectModeRequirementIds = [
@@ -492,9 +497,10 @@ interface UploadQuestionDialogProps {
   onContinueUpload?: () => void; // 继续上传回调，打开文件选择弹窗
   onSupplementUpload?: () => void; // 补充资料回调，打开文件选择弹窗（隐藏资源库tab）
   onReupload?: () => void; // 重新上传回调，清空当前数据后打开文件选择弹窗
-  onDeleteFile?: (index: number) => void; // 删除文件回调
-  onUpdateFileRange?: (index: number, rangeStart: number, rangeEnd: number) => void; // 调整页码范围回调
-  fileTotalPages?: number[]; // 每个文件的总页数
+  onDeleteFile?: (index: number) => void;
+  onUpdateFileRange?: (index: number, rangeStart: number, rangeEnd: number) => void;
+  fileTotalPages?: number[];
+  onUploadFiles?: (files: File[], subject?: string, fileRanges?: { rangeStart: number; rangeEnd: number }[], fileTotalPages?: number[]) => void;
 }
 
 // 题型按学科动态计算（在组件内部通过 getValidQuestionTypes 获取）
@@ -1557,7 +1563,8 @@ export function UploadQuestionDialog({
   onReupload,
   onDeleteFile,
   onUpdateFileRange,
-  fileTotalPages
+  fileTotalPages,
+  onUploadFiles
 }: UploadQuestionDialogProps) {
   const router = useRouter();
   // ==================== 状态持久化 key ====================
@@ -1577,7 +1584,9 @@ export function UploadQuestionDialog({
 
   // ==================== 工作模式和流程阶段 ====================
   const [workMode, setWorkMode] = useState<WorkMode | null>(null);       // 选择的工作模式
-  const [flowStep, setFlowStep] = useState<FlowStep>('select_mode');     // 当前流程步骤
+  const [flowStep, setFlowStep] = useState<FlowStep>(
+    () => (uploadedFiles && uploadedFiles.length > 0 ? 'select_mode' : 'upload_files') as FlowStep
+  );
   
   // 兼容旧的 FlowStage（内部映射）
   const [flowStage, setFlowStage] = useState<FlowStage>('cutting');
@@ -5256,10 +5265,18 @@ export function UploadQuestionDialog({
 
   return (
     <div
-      className="fixed inset-y-0 left-0 bg-[#f0f4f7] z-50 flex flex-col"
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
       style={prdPanelOffsetStyle}
     >
-      {/* Toast 提示 */}
+      <div className="bg-[#f0f4f7] rounded-xl shadow-2xl flex flex-col overflow-hidden" style={{ width: 'calc(100vw - 64px)', height: 'calc(100vh - 64px)', maxWidth: '1400px' }}>
+        {/* 标题栏 */}
+        <div className="flex items-center justify-between px-5 py-3 border-b bg-white flex-shrink-0">
+          <h3 className="font-medium text-gray-800 text-base">识别作业资料</h3>
+          <button onClick={onClose} className="w-7 h-7 bg-emerald-500 rounded-full flex items-center justify-center text-white hover:bg-emerald-600 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {/* Toast 提示 */}
       {toastMessage && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-gray-800 text-white text-xs rounded-lg shadow-lg transition-opacity">
           {toastMessage}
@@ -5458,14 +5475,8 @@ export function UploadQuestionDialog({
             {uploadedFiles && uploadedFiles.length > 0 && (
               <div data-req-anchor="select-mode-file-list" className="relative bg-gray-50 rounded-lg p-3 mt-3">
                 {renderRequirementMarker('SELECT_MODE-004', 'right-1 top-1', 6)}
-                <div className="flex items-center justify-between mb-2">
+                <div className="mb-2">
                   <span className="text-xs text-gray-500">已上传的资料：</span>
-                  <button
-                    onClick={() => goToStep('upload_files')}
-                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    更换资料
-                  </button>
                 </div>
                 <div className="space-y-1">
                   {uploadedFiles.map((f, i) => {
@@ -5490,202 +5501,19 @@ export function UploadQuestionDialog({
 
       {/* ==================== 上传资料步骤（第一步）==================== */}
       {flowStep === 'upload_files' && (
-        <div className="flex-1 overflow-auto p-8 flex justify-center bg-[#f0f4f7]">
-          <div className="max-w-[640px] w-full mt-4">
-            {/* 中央资料管理卡片 */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              {uploadedFiles && uploadedFiles.length > 0 ? (() => {
-                // 24页限制校验（与 ImportDocumentDialog 逻辑一致）
-                const totalOriginalPages = effectiveTotalPages?.reduce((sum, p) => sum + p, 0) || 0;
-                const totalSelectedPages = fileRanges?.reduce((sum, r) => sum + (r.rangeEnd - r.rangeStart + 1), 0) || 0;
-                const isOverLimit = totalOriginalPages > 24;
-                const isSelectedOverLimit = totalSelectedPages > 24;
-                const isPageLimitExceeded = isOverLimit && isSelectedOverLimit;
-
-                return (
-                /* ========== 有数据态 ========== */
-                <div data-req-anchor="upload-files-step.file-list" className="relative p-6">
-                  {renderRequirementMarker('UPLOAD_FILES_STEP-002', 'right-3 top-3')}
-                  {/* 区块标题 */}
-                  <div className="mb-4">
-                    <h3 className="text-sm font-medium text-gray-800">已上传资料</h3>
-                    <p className="text-xs text-gray-400 mt-1">
-                      已上传 {uploadedFiles.length} 份文件，共{' '}
-                      {totalSelectedPages} 页
-                    </p>
-                  </div>
-
-                  {/* 文件列表 */}
-                  <div className="mb-5">
-                    {uploadedFiles.map((file, idx) => {
-                      const range = fileRanges?.[idx];
-                      const pageCount = range ? range.rangeEnd - range.rangeStart + 1 : null;
-                      const totalPages = effectiveTotalPages?.[idx];
-                      return (
-                        <div key={idx} className="flex items-center justify-between p-3 hover:bg-gray-50">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="w-10 h-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
-                              <FileText className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm text-gray-700 truncate">{file.name}</div>
-                              <div className="text-xs text-gray-500 flex items-center gap-2">
-                                <span>{formatFileSize(file.size)}</span>
-                                <span>·</span>
-                                {pageCount !== null && totalPages ? (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingRangeIndex(idx);
-                                      setEditRangeStart(range?.rangeStart ?? 1);
-                                      setEditRangeEnd(range?.rangeEnd ?? 1);
-                                    }}
-                                    className="text-xs text-blue-600 font-medium hover:text-blue-800 hover:underline cursor-pointer"
-                                  >
-                                    识别{pageCount}页 / 共{totalPages}页
-                                  </button>
-                                ) : pageCount !== null ? (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingRangeIndex(idx);
-                                      setEditRangeStart(range?.rangeStart ?? 1);
-                                      setEditRangeEnd(range?.rangeEnd ?? 1);
-                                    }}
-                                    className="text-xs text-blue-600 font-medium hover:text-blue-800 hover:underline cursor-pointer"
-                                  >
-                                    识别{pageCount}页
-                                  </button>
-                                ) : null}
-                              </div>
-                            </div>
-                          </div>
-                          <div
-                            data-req-anchor={idx === 0 ? 'upload-files-step.file-delete' : undefined}
-                            className="relative"
-                          >
-                            {idx === 0 && renderRequirementMarker('UPLOAD_FILES_STEP-003', 'right-0 -top-3')}
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <button className="text-gray-400 hover:text-red-500">
-                                  <Trash2 className="w-5 h-5" />
-                                </button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="max-w-sm">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>确认删除该文件？</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    将移除「{file.name}」，此操作不可撤销。
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>取消</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => onDeleteFile?.(idx)}
-                                    className="bg-red-600 hover:bg-red-700 text-white"
-                                  >
-                                    确认删除
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* 24页超限警告 */}
-                  {isPageLimitExceeded && (
-                    <div data-req-anchor="upload-files-step.page-limit" className="relative mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      {renderRequirementMarker('UPLOAD_FILES_STEP-006', 'right-2 top-2')}
-                      <p className="text-xs text-amber-700 flex items-start gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                        <span>检测到文件共{totalOriginalPages}页，最多支持识别24页，请删除部分文件或自定义选择文件识别范围后，再继续操作</span>
-                      </p>
-                      <div className="flex justify-center mt-2">
-                        <button
-                          onClick={() => {
-                            // 打开第一个文件的页码范围调整
-                            setEditingRangeIndex(0);
-                            const range = fileRanges?.[0];
-                            setEditRangeStart(range?.rangeStart ?? 1);
-                            setEditRangeEnd(range?.rangeEnd ?? 1);
-                          }}
-                          className="px-4 py-1.5 text-xs font-medium text-amber-700 border border-amber-400 rounded-lg hover:bg-amber-100 transition-colors"
-                        >
-                          选择识别范围
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 底部操作栏 */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <div data-req-anchor="upload-files-step.continue-upload" className="relative">
-                      {renderRequirementMarker('UPLOAD_FILES_STEP-005', '-right-2 -top-3')}
-                      <button
-                        onClick={() => onContinueUpload?.()}
-                        className="px-4 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5"
-                      >
-                        <CloudUpload className="w-4 h-4" /> 继续上传
-                      </button>
-                    </div>
-                    <div data-req-anchor="upload-files-step.next" className="relative">
-                      {renderRequirementMarker('UPLOAD_FILES_STEP-011', '-right-2 -top-3')}
-                      <button
-                        onClick={() => {
-                          setFlowStep('select_mode');
-                          setFlowStage('cutting');
-                        }}
-                        disabled={isPageLimitExceeded}
-                        className={cn(
-                          "px-5 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium",
-                          isPageLimitExceeded
-                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                            : "bg-emerald-500 text-white hover:bg-emerald-600"
-                        )}
-                      >
-                        下一步 <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                );
-              })() : (
-                /* ========== 无数据态 ========== */
-                <div data-req-anchor="upload-files-step.empty-upload" className="relative p-8 flex flex-col items-center">
-                  {renderRequirementMarker('UPLOAD_FILES_STEP-004', 'right-3 top-3')}
-                  {/* 上传图标 */}
-                  <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
-                    <CloudUpload className="w-8 h-8 text-gray-300" />
-                  </div>
-
-                  {/* 主提示文案 */}
-                  <p className="text-sm font-medium text-gray-700 mb-1">请上传本次需要识别的资料文件</p>
-
-                  {/* 辅助说明文案 */}
-                  <p className="text-xs text-gray-400 mb-6">支持 PDF、JPG、PNG 等格式，单次上传最多识别 24 页内容</p>
-
-                  {/* 上传区域（虚线框） */}
-                  <button
-                    onClick={() => onContinueUpload?.()}
-                    className="w-full border-2 border-dashed border-gray-300 rounded-lg py-10 flex flex-col items-center justify-center hover:border-emerald-400 hover:bg-emerald-50/30 transition-colors mb-4"
-                  >
-                    <CloudUpload className="w-8 h-8 text-gray-300 mb-2" />
-                    <span className="text-sm text-gray-500">点击上传，或拖拽文件至此</span>
-                  </button>
-
-                  {/* 上传按钮 */}
-                  <button
-                    onClick={() => onContinueUpload?.()}
-                    className="px-6 py-2 text-sm rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors font-medium"
-                  >
-                    上传资料
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="flex-1 overflow-auto bg-[#f0f4f7]">
+          <div className="max-w-[720px] mx-auto p-6">
+            <ImportDocumentDialog
+              inline
+              onUpload={(files, subject, ranges, totalPages) => {
+                onUploadFiles?.(files, subject, ranges, totalPages);
+                setFlowStep('select_mode');
+                setFlowStage('cutting');
+              }}
+              defaultSubject={subjectInfo}
+              existingPageCount={fileRanges?.reduce((sum, r) => sum + (r.rangeEnd - r.rangeStart + 1), 0) || 0}
+              onClose={() => {}}
+            />
           </div>
         </div>
       )}
@@ -8148,6 +7976,7 @@ export function UploadQuestionDialog({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

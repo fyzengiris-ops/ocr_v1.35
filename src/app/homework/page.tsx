@@ -87,7 +87,8 @@ function HomeworkPrototype() {
   const [, setSelectedQuestions] = useState<number[]>([]);
   const [, setCurrentStep] = useState<'idle' | 'upload' | 'subject' | 'select' | 'recognize' | 'edit'>('idle');
   const [isAppendUpload, setIsAppendUpload] = useState(false); // 是否为追加上传模式
-  const [isSupplementUpload, setIsSupplementUpload] = useState(false); // 补充资料模式（隐藏资源库tab）
+  const [isSupplementUpload, setIsSupplementUpload] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<{ name: string }[] | null>(null);
   const requirementReader = useRequirementReader();
 
   // 检测是否需要恢复上传录题弹窗（从试卷编辑页返回时）
@@ -372,6 +373,7 @@ function HomeworkPrototype() {
           onClose={() => setShowAIPanel(false)}
           onActionClick={handleAIButtonClick}
           uploadedFile={uploadedFiles[0] || null}
+          pendingFiles={pendingFiles}
         />
       )}
 
@@ -393,7 +395,13 @@ function HomeworkPrototype() {
       {/* 上传录题弹窗 */}
       {showUploadDialog && (
         <UploadQuestionDialog
-          onClose={() => setShowUploadDialog(false)}
+          onClose={() => {
+            setShowUploadDialog(false);
+            if (uploadedFiles.length > 0) {
+              setPendingFiles(uploadedFiles.map(f => ({ name: f.name })));
+              setTimeout(() => setPendingFiles(null), 100);
+            }
+          }}
           onQuestionSelect={handleQuestionSelect}
           onAddToPaper={handleAddToPaper}
           uploadedFiles={uploadedFiles}

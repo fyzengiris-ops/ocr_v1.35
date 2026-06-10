@@ -27,7 +27,7 @@ const emptyFallbacks = new Set([
 
 const lowInformationStates = new Set(['正常显示', '正常态']);
 
-const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConfig[]> = {
+export const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConfig[]> = {
   'upload-question-dialog-select-mode': [
     {
       id: 'page-markers',
@@ -67,18 +67,29 @@ const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGroupConf
       id: 'page-markers',
       title: '选择识别内容',
       requirementIds: [
+        'SELECT_MODE-007',
         'BOX_STEP-010',
         'BOX_STEP-001',
-        'BOX_STEP-002',
         'BOX_STEP-003',
+        'BOX_STEP-002',
         'BOX_STEP-007',
         'BOX_STEP-014',
         'BOX_STEP-013',
         'BOX_STEP-005',
-        'BOX_STEP-004',
+        'IMPORT_DOCUMENT_DIALOG-001',
+        'IMPORT_DOCUMENT_DIALOG-018',
+        'IMPORT_DOCUMENT_DIALOG-002',
+        'IMPORT_DOCUMENT_DIALOG-020',
+        'IMPORT_DOCUMENT_DIALOG-004',
+        'IMPORT_DOCUMENT_DIALOG-003',
+        'IMPORT_DOCUMENT_DIALOG-006',
+        'IMPORT_DOCUMENT_DIALOG-007',
+        'IMPORT_DOCUMENT_DIALOG-015',
+        'IMPORT_DOCUMENT_DIALOG-016',
         'BOX_STEP-008',
         'BOX_STEP-011',
         'BOX_STEP-012',
+        'BOX_STEP-004',
       ],
     },
   ],
@@ -171,7 +182,7 @@ export function createRequirementMap(requirements: RequirementItem[]) {
   return new Map(requirements.map((requirement) => [requirement.id, requirement]));
 }
 
-export function getRequirementDisplayGroups(registry: RequirementRegistry): RequirementDisplayGroup[] {
+export function getRequirementDisplayGroups(registry: RequirementRegistry, extraRequirementsById?: Map<string, RequirementItem>): RequirementDisplayGroup[] {
   const groupConfigs = requirementDisplayGroupConfigs[registry.registryId];
 
   if (!groupConfigs) {
@@ -188,7 +199,7 @@ export function getRequirementDisplayGroups(registry: RequirementRegistry): Requ
   const groups = groupConfigs
     .map((groupConfig) => {
       const requirements = groupConfig.requirementIds
-        .map((requirementId) => requirementsById.get(requirementId))
+        .map((requirementId) => requirementsById.get(requirementId) ?? extraRequirementsById?.get(requirementId))
         .filter((requirement): requirement is RequirementItem => Boolean(requirement));
 
       requirements.forEach((requirement) => usedRequirementIds.add(requirement.id));
@@ -216,8 +227,8 @@ export function getRequirementDisplayGroups(registry: RequirementRegistry): Requ
   return groups;
 }
 
-export function getOrderedRequirementsForDisplay(registry: RequirementRegistry) {
-  const requirements = getRequirementDisplayGroups(registry).flatMap((group) => group.requirements);
+export function getOrderedRequirementsForDisplay(registry: RequirementRegistry, extraRequirementsById?: Map<string, RequirementItem>) {
+  const requirements = getRequirementDisplayGroups(registry, extraRequirementsById).flatMap((group) => group.requirements);
   if (registry.displayOrder && registry.displayOrder.length > 0) {
     const orderMap = new Map(registry.displayOrder.map((id, i) => [id, i]));
     return [...requirements].sort((a, b) => {
@@ -231,11 +242,28 @@ export function getOrderedRequirementsForDisplay(registry: RequirementRegistry) 
 
 export function createRequirementDisplayNumberMap(registries: RequirementRegistry[]) {
   const map = new Map<string, number>();
+  // 先收集所有 registries 的 displayNumberMap
+  const globalNumberMap = new Map<string, number>();
+  for (const registry of registries) {
+    if (registry.displayNumberMap) {
+      for (const [id, num] of Object.entries(registry.displayNumberMap)) {
+        globalNumberMap.set(id, num);
+      }
+    }
+  }
   for (const registry of registries) {
     const requirements = getOrderedRequirementsForDisplay(registry);
     requirements.forEach((requirement, index) => {
-      map.set(requirement.id, index + 1);
+      map.set(requirement.id, globalNumberMap.get(requirement.id) ?? index + 1);
     });
+    // 处理 displayNumberMap 中属于本 registry 但不在 requirements 里的 ID（跨注册表引用）
+    if (registry.displayNumberMap) {
+      for (const [id, num] of Object.entries(registry.displayNumberMap)) {
+        if (!map.has(id)) {
+          map.set(id, num);
+        }
+      }
+    }
   }
   return map;
 }

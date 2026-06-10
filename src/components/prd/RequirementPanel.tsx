@@ -7,6 +7,7 @@ import type { RequirementItem, RequirementRegistry } from '@/requirements';
 import { cn } from '@/lib/utils';
 import {
   createRequirementDisplayNumberMap,
+  createRequirementMap,
   getRequirementDisplayGroups,
   isUsefulRequirementText,
   splitTextIntoReadableItems,
@@ -15,6 +16,7 @@ import {
 interface RequirementPanelProps {
   registries: RequirementRegistry[];
   displayNumberRegistries?: RequirementRegistry[];
+  allRegistries?: RequirementRegistry[];
   selectedRequirementId: string | null;
   onSelectRequirement: (requirement: RequirementItem) => void;
   onClose: () => void;
@@ -123,6 +125,7 @@ function RequirementDetail({
 export function RequirementPanel({
   registries,
   displayNumberRegistries,
+  allRegistries,
   selectedRequirementId,
   onSelectRequirement,
   onClose,
@@ -131,6 +134,10 @@ export function RequirementPanel({
   const displayNumbersByRequirementId = useMemo(
     () => createRequirementDisplayNumberMap(displayNumberRegistries ?? registries),
     [displayNumberRegistries, registries],
+  );
+  const allRequirementsById = useMemo(
+    () => createRequirementMap((allRegistries ?? registries).flatMap(r => r.requirements)),
+    [allRegistries, registries],
   );
 
   return (
@@ -156,7 +163,7 @@ export function RequirementPanel({
             <h3 className="text-xs font-semibold text-gray-900">需求列表</h3>
             <div className="mt-2 space-y-3">
               {registries.map((registry) => {
-                const requirementGroups = getRequirementDisplayGroups(registry);
+                const requirementGroups = getRequirementDisplayGroups(registry, allRequirementsById);
 
                 return (
                   <div key={registry.registryId}>

@@ -90,19 +90,28 @@ const selectModeRequirementIds = [
 
 const boxStepRequirementIds = [
   'SELECT_MODE-007',
-  'SELECT_MODE-006',
   'BOX_STEP-010',
   'BOX_STEP-001',
-  'BOX_STEP-002',
   'BOX_STEP-003',
+  'BOX_STEP-002',
   'BOX_STEP-007',
   'BOX_STEP-014',
   'BOX_STEP-013',
   'BOX_STEP-005',
-  'BOX_STEP-004',
+  'IMPORT_DOCUMENT_DIALOG-001',
+  'IMPORT_DOCUMENT_DIALOG-018',
+  'IMPORT_DOCUMENT_DIALOG-002',
+  'IMPORT_DOCUMENT_DIALOG-020',
+  'IMPORT_DOCUMENT_DIALOG-004',
+  'IMPORT_DOCUMENT_DIALOG-003',
+  'IMPORT_DOCUMENT_DIALOG-006',
+  'IMPORT_DOCUMENT_DIALOG-007',
+  'IMPORT_DOCUMENT_DIALOG-015',
+  'IMPORT_DOCUMENT_DIALOG-016',
   'BOX_STEP-008',
   'BOX_STEP-011',
   'BOX_STEP-012',
+  'BOX_STEP-004',
 ];
 
 const reviewStepRequirementIds = [
@@ -5707,7 +5716,7 @@ export function UploadQuestionDialog({
           {/* 继续上传后的切题提示 */}
           {isAutoDetecting && questionBoxes.length > 0 && (
             <div data-req-anchor="box-step-append-detect-tip" className="relative flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-b border-blue-100 text-xs text-blue-600">
-              {renderRequirementMarker('BOX_STEP-008', 'right-2 top-1', 10)}
+              {renderRequirementMarker('BOX_STEP-008', 'right-2 top-1', 20)}
               <Loader2 className="w-3 h-3 animate-spin" />
               <span>正在处理新文件...</span>
             </div>
@@ -5855,7 +5864,7 @@ export function UploadQuestionDialog({
                 data-req-anchor={isSelectionStep ? 'box-step-selection-stats' : undefined}
                 className="absolute top-3 right-3 z-40 flex items-center"
               >
-                {isSelectionStep && renderRequirementMarker('BOX_STEP-001', '-left-2 -top-2', 2)}
+                {isSelectionStep && renderRequirementMarker('BOX_STEP-001', '-left-2 -top-2', 3)}
                 <div className="pointer-events-none rounded bg-black/70 px-3 py-1.5 text-xs text-white">
                   <span>已选中 <span className="font-medium">{selectedCount}</span> 题 / 已框选 <span className="font-medium">{totalBoxCount}</span> 题</span>
                 </div>
@@ -5865,7 +5874,7 @@ export function UploadQuestionDialog({
             {showBoxStepFloatingActions && (
               <div className="absolute right-3 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-2">
                 <div data-req-anchor="box-step-start-btn" className="relative flex flex-col items-center gap-1">
-                  {renderRequirementMarker('BOX_STEP-002', '-left-1 -top-1', 3)}
+                  {renderRequirementMarker('BOX_STEP-002', '-left-1 -top-1', 5)}
                   <button
                     onClick={handleBatchMove}
                     disabled={selectedCount === 0 || isProcessing || isAutoDetecting}
@@ -5895,7 +5904,7 @@ export function UploadQuestionDialog({
                 </div>
                 {isSelectionStep && (
                   <div data-req-anchor="box-step-clear-action" className="relative flex flex-col items-center gap-2">
-                    {renderRequirementMarker('BOX_STEP-014', '-left-1 -top-2', 6)}
+                    {renderRequirementMarker('BOX_STEP-014', '-left-1 -top-2', 7)}
                     <div className="flex flex-col items-center gap-1">
                       <button
                         type="button"
@@ -5933,19 +5942,15 @@ export function UploadQuestionDialog({
             {/* 右边缘悬浮球 — 右下角：更多工具 */}
             {showBoxStepFloatingActions && isSelectionStep && (
               <div data-req-anchor="box-step-more-tools" className="absolute right-3 bottom-4 z-30 flex flex-col items-center gap-1">
-                {renderRequirementMarker('BOX_STEP-013', '-left-1 -top-2', 7)}
+                {renderRequirementMarker('BOX_STEP-013', '-left-1 -top-2', 8)}
                 {moreToolsOpen && (
                   <div className="mb-1 flex flex-col gap-1.5 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
                     <div data-req-anchor="box-step-modify-files" className="relative">
-                      {renderRequirementMarker('BOX_STEP-012', 'right-0 -top-2', 12)}
+                      {renderRequirementMarker('BOX_STEP-012', 'right-0 -top-2', 22)}
                       <button
                         onClick={() => {
                           setMoreToolsOpen(false);
-                          if (questions.length > 0) {
-                            setShowClearRecognitionConfirm('modify_files');
-                          } else {
-                            goToStep('upload_files');
-                          }
+                          setShowClearRecognitionConfirm('modify_files');
                         }}
                         className="flex w-full items-center gap-1.5 rounded px-3 py-2 text-xs whitespace-nowrap text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800"
                       >
@@ -5955,7 +5960,7 @@ export function UploadQuestionDialog({
                     </div>
                     {onSupplementUpload && (
                       <div data-req-anchor="box-step-supplement-upload" className="relative">
-                        {renderRequirementMarker('BOX_STEP-005', 'right-0 -top-2', 8)}
+                        {renderRequirementMarker('BOX_STEP-005', 'right-0 -top-2', 9)}
                         <button
                           onClick={() => {
                             if (isAutoDetecting) {
@@ -5992,7 +5997,7 @@ export function UploadQuestionDialog({
                 </span>
               </div>
             )}
-            {(isSelectionStep || isReviewStep) && renderRequirementMarker('BOX_STEP-010', 'left-2 top-2 z-50', 1)}
+            {(isSelectionStep || isReviewStep) && renderRequirementMarker('BOX_STEP-010', 'left-2 top-2 z-50', 2)}
             <div
               ref={containerRef}
               className="h-full overflow-auto p-4 flex flex-col items-center gap-4"
@@ -6502,7 +6507,7 @@ export function UploadQuestionDialog({
               "px-4 py-2 border-b flex items-center gap-3",
               isRecognitionFailure ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
             )}>
-              {renderRequirementMarker('BOX_STEP-011', 'right-1 top-1', 11)}
+              {renderRequirementMarker('BOX_STEP-011', 'right-1 top-1', 21)}
               {isRecognitionFailure ? (
                 <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
               ) : (
@@ -6515,7 +6520,7 @@ export function UploadQuestionDialog({
                 {processingMessage || '正在处理中...'}
               </span>
               <div data-req-anchor="box-step-pause-cancel-btn" className="relative flex items-center gap-1.5">
-                {renderRequirementMarker('BOX_STEP-007', 'right-0 -top-1', 5)}
+                {renderRequirementMarker('BOX_STEP-007', 'right-0 -top-1', 6)}
                 <button onClick={handleCancelRecognition} className="px-2.5 py-0.5 text-[11px] font-medium rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors">取消识别</button>
               </div>
             </div>
@@ -6540,7 +6545,7 @@ export function UploadQuestionDialog({
                   {processingMessage || '正在处理中...'}
                 </p>
                 <div data-req-anchor="box-step-pause-cancel-btn" className="relative flex items-center gap-2 mt-1">
-                  {renderRequirementMarker('BOX_STEP-007', 'right-1 top-0', 5)}
+                  {renderRequirementMarker('BOX_STEP-007', 'right-1 top-0', 6)}
                   <button onClick={handleCancelRecognition} className="px-4 py-1.5 text-xs font-medium rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors">取消识别</button>
                 </div>
               </div>

@@ -162,7 +162,7 @@ export const SYSTEM_PROMPT_CROPPED = `你是一个教育资料智能识别专家
 6. content 字段中的换行符必须用 \\\\n 转义
 7. 不要在JSON前后添加任何其他内容
 8. **关键**：没有选项的题目绝不可能是选择题，必须根据内容特征正确判断题型
-9. 复合题/大题不做子题结构化拆分；子题标号和内容保留在父题 content / answer / analysis 原文中，subQuestions 返回空数组
+t9. 大题包含子题标号时必须拆分：每个subQuestion包含content、questionType、optionCount、optionContents、answer、analysis字段；父题content只保留第一个标号前的内容；如果答案或解析本身有子题结构，按对应标号拆分到各subQuestion；无法拆分的保留在空字符串
 10. **绝对不要输出任何图片URL或图片引用！**`;
 
 /**
@@ -317,7 +317,7 @@ export const SYSTEM_PROMPT_SMART = `你是教育资料智能识别专家。用�
 3. 题目框(type=question)必须包含questionType字段，可选值：单选题、多选题、判断题、填空题、问答题、解答题、计算题、材料题
 4. 选择题（单选题/多选题）必须包含optionCount字段，表示选项总数；非选择题optionCount设为null
 4.5. 填空题必须包含blankCount字段，表示需要填写的空位数；非填空题blankCount设为null
-4.6. 复合题/大题不做子题结构化拆分；即使识别到子题标号，也保留在父题content/answer/analysis原文中，subQuestions返回空数组
+t4.6. 大题子题必须结构化拆分：当父题包含子题标号时，必须拆分为独立subQuestion对象，父题content只保留第一个子题标号前的内容。每个subQuestion必须含content、根据子题内容推断questionType、如为选择题填写optionCount和optionContents、如有答案和解析填入对应字段否则留空
 5. 分离答案和解析，不要混合
 6. confidence表示识别置信度（0-1）
 7. 禁止输出图片URL或引用
@@ -1305,7 +1305,7 @@ export function smartMatchQuestionsAndAnswers(
         questionType: (region.questionType || inferQuestionTypeFromContent(region.content || '')) as MatchedQuestion['questionType'],
         optionCount: region.optionCount ?? undefined,
         blankCount: region.blankCount ?? undefined,
-        subQuestions: undefined,
+        subQuestions: region.subQuestions && region.subQuestions.length > 0 ? region.subQuestions : undefined,
         answerSource: 'manual',
         status: 'no_answer',
         showRecognizedContent: false,
@@ -1493,6 +1493,7 @@ export function parseSmartAIResponse(responseText: string): Array<{
     answer?: string;
     analysis?: string;
     optionCount?: number | null;
+    optionContents?: Record<string, string>;
     blankCount?: number | null;
   }>;
   content: string;
@@ -1744,7 +1745,7 @@ export function parseSmartAIResponse(responseText: string): Array<{
           region.questionType = inferQuestionTypeFromContent(region.content || '');
         }
         region.optionCount = region.optionCount ?? null;
-        region.subQuestions = [];
+        if (!region.subQuestions || !Array.isArray(region.subQuestions) || region.subQuestions.length === 0) { region.subQuestions = []; }
       }
       return region;
     });

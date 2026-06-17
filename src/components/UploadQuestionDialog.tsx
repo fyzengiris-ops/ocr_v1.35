@@ -2601,15 +2601,15 @@ export function UploadQuestionDialog({
       setManualLinkTarget(target);
     }
     setManualAnswerLinking(target !== null);
-    if (target !== null) scrollToAnswerFilePage();
+    if (target !== null && target.field !== 'content' && target.field !== 'options') scrollToAnswerFilePage();
   };
   const handleDirectedManualLinkEntryClick = (questionId: number, field: ManualLinkField, subQuestionId?: number) => {
     const target: ManualLinkTarget = { questionId, field, subQuestionId };
-    setManualLinkTarget(target);
-    if (manualAnswerLinking) {
-      enterManualAnswerLinking(target);
+    if (manualAnswerLinking && manualLinkTarget && manualLinkTarget.questionId === questionId && manualLinkTarget.field === field && manualLinkTarget.subQuestionId === subQuestionId) {
+      enterManualAnswerLinking(null);
       return;
     }
+    setManualLinkTarget(target);
     enterManualAnswerLinking(target);
   };
   const reviewStats = useMemo(() => {
@@ -4283,6 +4283,12 @@ export function UploadQuestionDialog({
                   setFlowStep('review');
                   setFlowStage('matched');
                   setProcessingMessage('');
+                  if (directTarget) {
+                    setManualAnswerLinking(false);
+                    setManualLinkTarget(null);
+                    const drawnBoxId = orderedBoxes[0]?.id;
+                    if (drawnBoxId) setQuestionBoxes(prev => prev.filter(b => b.id !== drawnBoxId));
+                  }
                 }, 2000);
                 return;
               } else if (chunk.type === 'error') {
@@ -6110,8 +6116,8 @@ export function UploadQuestionDialog({
                       <div className="absolute inset-0 z-20 cursor-not-allowed bg-amber-50/10" />
                     )}
 
-                    {/* 题目框 - 切图阶段显示可编辑框（识别题目阶段） */}
-                    {(isSelectionStep || isReviewStep) && pageBoxes.map((box) => {
+                    {/* 题目框 - 切图阶段显示可编辑框。关联态下隐藏 */}
+                    {(isSelectionStep || isReviewStep) && !(manualAnswerLinking && manualLinkTarget) && pageBoxes.map((box) => {
                       const renderStyle = getBoxRenderStyle(box, pageNum);
                       if (!renderStyle) return null;
                       const isRecognizingBox = isBoxRecognizing(box.id);
@@ -7381,6 +7387,7 @@ export function UploadQuestionDialog({
                                 {/* 编辑模式：主观题子题题干 */}
                                 {viewMode === 'recognize' && !choiceQuestionTypes.includes(sub.questionType) && (
                                   <div className="mb-2 pl-2 border-l-3 border-blue-400 bg-blue-50/60 rounded-r p-2">
+                                    <div className="flex items-center justify-between mb-0.5"><div className="flex items-center gap-1"><label className="text-xs text-gray-500">子题题干</label><button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'content', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)} className="p-0.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" title="框选内容并填入子题题干区"><Link2Icon className="w-3 h-3" /></button></div></div>
                                     <textarea value={sub.content} onChange={(e) => handleUpdateSubContent(question.id, sub.id, e.target.value)} placeholder="请输入子题题干内容" rows={2} className="w-full px-2.5 py-1.5 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500" />
                                   </div>
                                 )}
@@ -7494,7 +7501,10 @@ export function UploadQuestionDialog({
                                     /* 子题单答案 */
                                     <div>
                                       <div className="flex items-center justify-between mb-0.5">
-                                        <label className="text-xs text-gray-500">答案</label>
+                                        <div className="flex items-center gap-1">
+                                          <label className="text-xs text-gray-500">答案</label>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'answer', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)} className={cn("p-0.5 rounded text-gray-300 transition-colors", manualLinkTarget?.questionId === question.id && manualLinkTarget.field === 'answer' && manualLinkTarget.subQuestionId === sub.id ? "bg-orange-50 text-orange-500" : "hover:bg-orange-50 hover:text-orange-500", (isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300")} title="框选内容并填入该子题答案"><Link2Icon className="w-3 h-3" /></button>
+                                        </div>
                                         {sub.answer?.trim() && (
                                           <button
                                             type="button"
@@ -7529,7 +7539,10 @@ export function UploadQuestionDialog({
                                   )}
                                   <div>
                                     <div className="flex items-center justify-between mb-0.5">
-                                      <label className="text-xs text-gray-500">解析</label>
+                                      <div className="flex items-center gap-1">
+                                        <label className="text-xs text-gray-500">解析</label>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'analysis', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)} className={cn("p-0.5 rounded text-gray-300 transition-colors", manualLinkTarget?.questionId === question.id && manualLinkTarget.field === 'analysis' && manualLinkTarget.subQuestionId === sub.id ? "bg-orange-50 text-orange-500" : "hover:bg-orange-50 hover:text-orange-500", (isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300")} title="框选内容并填入该子题解析"><Link2Icon className="w-3 h-3" /></button>
+                                      </div>
                                       {!answerProcessingForQuestionIds.has(question.id) && sub.analysis?.trim() && (
                                         <button
                                           type="button"

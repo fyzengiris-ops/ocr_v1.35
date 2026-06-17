@@ -2601,7 +2601,6 @@ export function UploadQuestionDialog({
       setManualLinkTarget(target);
     }
     setManualAnswerLinking(target !== null);
-    if (target !== null && target.field !== 'content' && target.field !== 'options') scrollToAnswerFilePage();
   };
   const handleDirectedManualLinkEntryClick = (questionId: number, field: ManualLinkField, subQuestionId?: number) => {
     const target: ManualLinkTarget = { questionId, field, subQuestionId };
@@ -2659,6 +2658,9 @@ export function UploadQuestionDialog({
     const pageRole = getPageRoleValue(pageNumber);
 
     if (manualAnswerLinking) {
+      if (manualLinkTarget?.field === 'content' || manualLinkTarget?.field === 'options') {
+        return pageRole === 'question';
+      }
       return pageRole !== 'question';
     }
 
@@ -3062,9 +3064,19 @@ export function UploadQuestionDialog({
     return candidates.find((value) => value?.trim())?.trim() || '';
   };
 
-  const applyManualLinkTargetToQuestion = (question: Question, field: ManualLinkField, text: string): Question => {
+  const applyManualLinkTargetToQuestion = (question: Question, field: ManualLinkField, text: string, subId?: number): Question => {
     const normalizedText = text.trim();
     if (!normalizedText) return question;
+
+    // 子题关联回填
+    if (subId !== undefined) {
+      return { ...question, subQuestions: (question.subQuestions || []).map(s => {
+        if (s.id !== subId) return s;
+        if (field === 'answer') return { ...s, answer: normalizedText, status: 'matched' };
+        if (field === 'content') return { ...s, content: normalizedText };
+        return { ...s, analysis: normalizedText };
+      })};
+    }
 
     if (field === 'answer') {
       if (isFillBlankType(question.questionType) && question.blankCount > 1) {
@@ -3072,22 +3084,12 @@ export function UploadQuestionDialog({
         const blankAnswers = splitAnswers || Array.from({ length: question.blankCount }, (_, index) =>
           index === 0 ? normalizedText : (question.blankAnswers[index] || '')
         );
-        return {
-          ...question,
-          blankAnswers,
-          answer: splitAnswers ? '' : question.answer,
-          status: 'matched',
-          answerSource: 'manual',
-        };
+        return { ...question, blankAnswers, answer: splitAnswers ? '' : question.answer, status: 'matched', answerSource: 'manual' };
       }
       return { ...question, answer: normalizedText, status: 'matched', answerSource: 'manual' };
     }
 
-    return {
-      ...question,
-      analysis: normalizedText,
-      status: hasUsableAnswer(question) ? 'matched' : 'pending_confirm',
-    };
+    return { ...question, analysis: normalizedText, status: hasUsableAnswer(question) ? 'matched' : 'pending_confirm' };
   };
 
   // 处理答案框：裁剪后调用答案提取 API，匹配到已有题目
@@ -3241,7 +3243,8 @@ export function UploadQuestionDialog({
             validQuestionTypes: getValidQuestionTypes(subjectInfo || ''),
           },
           subjectInfo,
-          answerMode: true,
+          answerMode: directTarget?.field === 'content' || directTarget?.field === 'options' ? undefined : true,
+          contentOnly: directTarget?.field === 'content' || directTarget?.field === 'options' ? true : undefined,
           // 传递已有题目，让后端能将提取的答案正确关联到对应题目（特别是子题结构）
           existingQuestions: questions.map(q => ({
             id: q.id,
@@ -3323,7 +3326,7 @@ export function UploadQuestionDialog({
                   if (directText) {
                     setQuestions(prev => prev.map(q =>
                       q.id === directTarget.questionId
-                        ? applyManualLinkTargetToQuestion(q, directTarget.field, directText)
+                        ? applyManualLinkTargetToQuestion(q, directTarget.field, directText, directTarget.subQuestionId)
                         : q
                     ));
                     matchedIds.add(directTarget.questionId);
@@ -4283,11 +4286,11 @@ export function UploadQuestionDialog({
                   setFlowStep('review');
                   setFlowStage('matched');
                   setProcessingMessage('');
-                  if (directTarget) {
+                  if (manualLinkTarget) {
                     setManualAnswerLinking(false);
                     setManualLinkTarget(null);
-                    const drawnBoxId = orderedBoxes[0]?.id;
-                    if (drawnBoxId) setQuestionBoxes(prev => prev.filter(b => b.id !== drawnBoxId));
+                    const cleanupId = boxes[0]?.id;
+                    if (cleanupId) setQuestionBoxes(prev => prev.filter(b => b.id !== cleanupId));
                   }
                 }, 2000);
                 return;
@@ -5032,11 +5035,16 @@ export function UploadQuestionDialog({
   };
   const isSubQuestionAnswerProcessing = (questionId: number | string, subQuestionId: number) =>
     answerProcessingForQuestionIds.has(questionId);
+  const isSubQuestionContentProcessing = (questionId: number | string, subQuestionId: number) =>
+    manualLinkProcessingTarget?.questionId === questionId && manualLinkProcessingTarget.subQuestionId === subQuestionId &&
+    (manualLinkProcessingTarget.field === 'content' || manualLinkProcessingTarget.field === 'options');
   const handleUpdateSubContent = (questionId: number, subId: number, content: string) => {
     setQuestions(prev => prev.map(q => q.id !== questionId ? q : { ...q, subQuestions: (q.subQuestions || []).map(s => s.id === subId ? { ...s, content } : s) }));
   };
 
   // 更新子题答案
+    manualLinkProcessingTarget?.questionId === questionId && manualLinkProcessingTarget.subQuestionId === subQuestionId &&
+    (manualLinkProcessingTarget.field === 'content' || manualLinkProcessingTarget.field === 'options');
   const handleUpdateSubAnswer = (questionId: number, subId: number, answer: string) => {
     setQuestions(prev => prev.map(q => {
       if (q.id !== questionId) return q;
@@ -7387,13 +7395,20 @@ export function UploadQuestionDialog({
                                 {/* 编辑模式：主观题子题题干 */}
                                 {viewMode === 'recognize' && !choiceQuestionTypes.includes(sub.questionType) && (
                                   <div className="mb-2 pl-2 border-l-3 border-blue-400 bg-blue-50/60 rounded-r p-2">
-                                    <div className="flex items-center justify-between mb-0.5"><div className="flex items-center gap-1"><label className="text-xs text-gray-500">子题题干</label><button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'content', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)} className="p-0.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" title="框选内容并填入子题题干区"><Link2Icon className="w-3 h-3" /></button></div></div>
+                                    {isSubQuestionContentProcessing(question.id, sub.id) ? (
+                                      <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 text-blue-500 animate-spin" /><span className="text-sm text-blue-600">题干识别中...</span></div>
+                                    ) : (<>
+                                    <div className="flex items-center justify-between mb-0.5"><div className="flex items-center gap-1"><label className="text-xs text-gray-500">子题题干</label><button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'content', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id) || isSubQuestionContentProcessing(question.id, sub.id)} className="p-0.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" title="框选内容并填入子题题干区"><Link2Icon className="w-3 h-3" /></button></div></div>
                                     <textarea value={sub.content} onChange={(e) => handleUpdateSubContent(question.id, sub.id, e.target.value)} placeholder="请输入子题题干内容" rows={2} className="w-full px-2.5 py-1.5 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500" />
+                                    </>)}
                                   </div>
                                 )}
                                 {/* 客观题选项区域 */}
                                 {choiceQuestionTypes.includes(sub.questionType) && (
                                   <div className="mb-2 pl-2 border-l-3 border-blue-400 bg-blue-50/60 rounded-r p-2 space-y-1.5">
+                                    {isSubQuestionContentProcessing(question.id, sub.id) && (
+                                      <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 text-blue-500 animate-spin" /><span className="text-sm text-blue-600">选项识别中...</span></div>
+                                    )}
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-1">
                                         <span className="text-[11px] text-gray-500">选项</span>

@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils';
 import {
   createRequirementDisplayNumberMap,
   createRequirementMap,
+  getDisplaySections,
+  getOperationSections,
   getRequirementDisplayGroups,
-  isUsefulRequirementText,
   splitTextIntoReadableItems,
 } from './requirement-utils';
 
@@ -28,20 +29,39 @@ function sourceTypeLabel(sourceType: RequirementItem['sourceType']) {
   return '代码+决策';
 }
 
-function ReadableText({ value }: { value: string }) {
-  const items = splitTextIntoReadableItems(value);
+const changeDateMarkerPattern = /(【\d{1,2}\.\d{1,2}】)/g;
+const exactChangeDateMarkerPattern = /^【\d{1,2}\.\d{1,2}】$/;
+
+function renderChangeDateMarkers(value: string) {
+  return value.split(changeDateMarkerPattern).map((part, index) => {
+    if (!exactChangeDateMarkerPattern.test(part)) {
+      return part;
+    }
+
+    return (
+      <span key={`${part}-${index}`} className="font-semibold text-orange-600">
+        {part}
+      </span>
+    );
+  });
+}
+
+function ReadableText({ value }: { value: string | string[] }) {
+  const items = Array.isArray(value)
+    ? value.map((item) => item.trim()).filter(Boolean)
+    : splitTextIntoReadableItems(value);
 
   if (items.length > 1) {
     return (
       <ul className="mt-1.5 list-disc space-y-1.5 pl-4 leading-5 text-gray-700">
         {items.map((item, index) => (
-          <li key={`${item}-${index}`}>{item}</li>
+          <li key={`${item}-${index}`}>{renderChangeDateMarkers(item)}</li>
         ))}
       </ul>
     );
   }
 
-  return <p className="mt-1.5 leading-5 text-gray-700">{items[0] ?? value}</p>;
+  return <p className="mt-1.5 leading-5 text-gray-700">{renderChangeDateMarkers(items[0] ?? '')}</p>;
 }
 
 function DetailBlock({ title, children }: { title: string; children: ReactNode }) {
@@ -68,12 +88,8 @@ function RequirementDetail({
     );
   }
 
-  const operationItems = [
-    { title: requirement.operation.title, value: requirement.operation.description },
-    { title: '使用范围', value: requirement.operation.permission },
-    { title: '后续流程', value: requirement.operation.dataFlow },
-    { title: '异常边界', value: requirement.operation.exceptions },
-  ].filter((item) => isUsefulRequirementText(item.value));
+  const displaySections = getDisplaySections(requirement);
+  const operationSections = getOperationSections(requirement);
 
   return (
     <div className="space-y-3">
@@ -104,16 +120,22 @@ function RequirementDetail({
       </div>
 
       <DetailBlock title="显示说明">
-        <div className="font-medium text-gray-800">{requirement.display.title}</div>
-        <ReadableText value={requirement.display.description} />
+        <div className="space-y-3">
+          {displaySections.map((item) => (
+            <div key={item.category}>
+              <div className="font-medium text-gray-800">{item.category}</div>
+              <ReadableText value={item.content} />
+            </div>
+          ))}
+        </div>
       </DetailBlock>
 
       <DetailBlock title="操作说明">
         <div className="space-y-3">
-          {operationItems.map((item) => (
-            <div key={item.title}>
-              <div className="font-medium text-gray-800">{item.title}</div>
-              <ReadableText value={item.value} />
+          {operationSections.map((item) => (
+            <div key={item.category}>
+              <div className="font-medium text-gray-800">{item.category}</div>
+              <ReadableText value={item.content} />
             </div>
           ))}
         </div>

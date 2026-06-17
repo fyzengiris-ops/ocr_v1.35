@@ -24,6 +24,23 @@ interface RequirementFloatingCardProps {
   onClose: () => void;
 }
 
+const changeDateMarkerPattern = /(【\d{1,2}\.\d{1,2}】)/g;
+const exactChangeDateMarkerPattern = /^【\d{1,2}\.\d{1,2}】$/;
+
+function renderChangeDateMarkers(value: string) {
+  return value.split(changeDateMarkerPattern).map((part, index) => {
+    if (!exactChangeDateMarkerPattern.test(part)) {
+      return part;
+    }
+
+    return (
+      <span key={`${part}-${index}`} className="font-semibold text-orange-600">
+        {part}
+      </span>
+    );
+  });
+}
+
 function SectionValue({ value }: { value: string | string[] }) {
   const items = Array.isArray(value)
     ? value.map((item) => item.trim()).filter(Boolean)
@@ -35,14 +52,14 @@ function SectionValue({ value }: { value: string | string[] }) {
         {items.map((item, index) => (
           <li key={`${item}-${index}`} className="flex gap-1.5">
             <span className="shrink-0 text-[11px] font-semibold text-emerald-700">{index + 1}、</span>
-            <span>{item}</span>
+            <span>{renderChangeDateMarkers(item)}</span>
           </li>
         ))}
       </ol>
     );
   }
 
-  return <p className="mt-1 leading-5">{items[0] ?? ''}</p>;
+  return <p className="mt-1 leading-5">{renderChangeDateMarkers(items[0] ?? '')}</p>;
 }
 
 function clamp(value: number, min: number, max: number) {

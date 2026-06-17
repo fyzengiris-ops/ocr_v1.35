@@ -45,6 +45,33 @@ function parseLatexParts(text: string): Array<{ type: 'text' | 'inline' | 'displ
   return result;
 }
 
+function renderTextWithStyledBlanks(text: string, keyPrefix: string) {
+  const nodes: React.ReactNode[] = [];
+  const pattern = /(_{2,}|[（(]\s*[）)]|[\[【]\s*[\]】])/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let index = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    nodes.push(
+      <span key={`${keyPrefix}-blank-${index}`} className="font-semibold text-emerald-600 decoration-emerald-500">
+        {match[0]}
+      </span>
+    );
+    lastIndex = match.index + match[0].length;
+    index += 1;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
 interface MathTextProps {
   text: string;
   className?: string;
@@ -64,7 +91,7 @@ export function MathText({ text, className = '' }: MathTextProps) {
             <React.Fragment key={index}>
               {lines.map((line, lineIdx) => (
                 <React.Fragment key={lineIdx}>
-                  {line}
+                  {renderTextWithStyledBlanks(line, `${index}-${lineIdx}`)}
                   {lineIdx < lines.length - 1 && <br />}
                 </React.Fragment>
               ))}
@@ -97,6 +124,7 @@ export function MathText({ text, className = '' }: MathTextProps) {
 interface MathEditableProps {
   value: string;
   onChange: (value: string) => void;
+  onSelectionChange?: (selection: { start: number; end: number }) => void;
   placeholder?: string;
   /** textarea 的额外类名 */
   className?: string;
@@ -117,6 +145,7 @@ interface MathEditableProps {
 export function MathEditable({
   value,
   onChange,
+  onSelectionChange,
   placeholder = '',
   className = '',
   minHeight = '80px',
@@ -127,11 +156,14 @@ export function MathEditable({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 进入编辑模式时自动聚焦并全选
+  // 进入编辑模式时自动聚焦，光标放到末尾，避免后续插入操作误用全选范围替换整段内容。
   useEffect(() => {
     if (isEditing && textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.select();
+      const textarea = textareaRef.current;
+      const end = textarea.value.length;
+      textarea.focus();
+      textarea.setSelectionRange(end, end);
+      onSelectionChange?.({ start: end, end });
     }
   }, [isEditing]);
 
@@ -140,10 +172,20 @@ export function MathEditable({
     if (!disabled) setIsEditing(true);
   }, [disabled]);
 
+  const handleSelectionChange = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || !onSelectionChange) return;
+    onSelectionChange({
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    });
+  }, [onSelectionChange]);
+
   // 编辑完成，退出编辑模式
   const handleBlur = useCallback(() => {
+    handleSelectionChange();
     setIsEditing(false);
-  }, []);
+  }, [handleSelectionChange]);
 
   // 按 Escape 退出编辑
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -161,9 +203,18 @@ export function MathEditable({
       <textarea
         ref={textareaRef}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          onSelectionChange?.({
+            start: e.target.selectionStart,
+            end: e.target.selectionEnd,
+          });
+        }}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
+        onKeyUp={handleSelectionChange}
+        onMouseUp={handleSelectionChange}
+        onSelect={handleSelectionChange}
         placeholder={placeholder}
         disabled={disabled}
         className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none ${className}`}

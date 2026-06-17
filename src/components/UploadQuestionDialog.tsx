@@ -30,7 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 import { PageNavigator } from '@/components/PageNavigator';
 import { processUploadedFile, batchCropImages, cropImage, stitchImagesVertically } from '@/lib/pdf-processor';
 import type { PageImage, QuestionBox, RecognizedBlock, RecognitionResult, MatchedQuestion, AnswerMarker } from '@/types/recognition';
@@ -54,6 +54,11 @@ interface ManualLinkTarget {
   questionId: number;
   field: ManualLinkField;
 }
+
+type PendingDeleteConfirm =
+  | { kind: 'box'; boxId: string }
+  | { kind: 'question'; questionId: number }
+  | { kind: 'subQuestion'; questionId: number; subId: number };
 
 /** 流程阶段 */
 type FlowStep =
@@ -736,16 +741,21 @@ function parseSubQuestionContent(content: string): { answer: string; analysis: s
  * 用于识别结果回填时自动构建子题结构
  */
 function recognizeSubQuestions(
-  q: { content?: string; answer?: string; analysis?: string; subQuestions?: SubQuestion[] },
+  q: { content?: string; answer?: string; analysis?: string; subQuestions?: Array<{ id?: number; questionType?: string; content?: string; answer?: string; analysis?: string; optionCount?: number | null; optionContents?: Record<string, string>; blankCount?: number | null; blankAnswers?: string[] }> },
   validTypes: string[] = []
 ): SubQuestion[] {
   // 策略1：优先使用 AI 返回的子题结构
   if (q.subQuestions && Array.isArray(q.subQuestions) && q.subQuestions.length > 0) {
     return q.subQuestions.map((sq, i) => ({
-      ...sq,
       id: sq.id || Date.now() + i,
       questionType: resolveQuestionType(sq.questionType, sq.content || '', validTypes),
       content: formatRecognizedContent(sq.content || ''),
+      answer: sq.answer || '',
+      analysis: sq.analysis || '',
+      optionCount: sq.optionCount ?? 4,
+      optionContents: sq.optionContents || {},
+      blankCount: sq.blankCount ?? 1,
+      blankAnswers: sq.blankAnswers || [],
     }));
   }
 
@@ -1703,8 +1713,17 @@ export function UploadQuestionDialog({
   const [drawStart, setDrawStart] = useState<{ x: number; y: number; pageNumber: number } | null>(null);
   const [currentBox, setCurrentBox] = useState<Partial<QuestionBox> | null>(null);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [activeReviewBoxId, setActiveReviewBoxId] = useState<string | null>(null);
+  const [hoveredReviewBoxId, setHoveredReviewBoxId] = useState<string | null>(null);
+  const [reviewBoxChangePending, setReviewBoxChangePending] = useState(false);
+  const [reviewBoxChangeSnapshot, setReviewBoxChangeSnapshot] = useState<{
+    questionBoxes: QuestionBox[];
+    questions: Question[];
+    answers: AnswerMarker[];
+  } | null>(null);
   const [resizing, setResizing] = useState<{ boxId: string; direction: string; initialW: number; initialH: number } | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState<PendingDeleteConfirm | null>(null);
   const [moving, setMoving] = useState<{ boxId: string; startX: number; startY: number; initialX: number; initialY: number; initialW: number; initialH: number } | null>(null);
   
   // 题目和答案数据
@@ -1712,6 +1731,7 @@ export function UploadQuestionDialog({
   const [batchProcessing, setBatchProcessing] = useState(false); // 批量识别+匹配流程中，控制右侧显示进度还是题目
   const prevQuestionCountRef = useRef(0);
   const customProgressRef = useRef(false); // handleBatchMove 已设置自定义进度文案
+  const hoverLocateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevReRecognizingIdsRef = useRef<Set<number>>(new Set());
   const prevBatchProcessingRef = useRef(false);
   const maxQuestionIdRef = useRef(0);
@@ -1789,6 +1809,13 @@ export function UploadQuestionDialog({
   const [toastMessage, setToastMessage] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeRecognitionBoxIdsRef = useRef<string[]>([]);
+  const activeRecognitionBoxBackupRef = useRef(new Map<string, {
+    isSelected: boolean;
+    recognized?: boolean;
+    recognitionStatus?: QuestionBox['recognitionStatus'];
+    questionNumber?: number;
+  }>());
+  const recognitionRunFailedRef = useRef(false);
   const [zoom, setZoom] = useState(100);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [highlightedQuestionId, setHighlightedQuestionId] = useState<number | null>(null);

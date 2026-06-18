@@ -2893,7 +2893,10 @@ export function UploadQuestionDialog({
           newBox.endPageY = currentBox.endPageY || 0;
           newBox.endPageHeight = currentBox.endPageHeight;
         }
-        setQuestionBoxes(prev => [...prev, newBox]);
+        // 批量补全模式下不写入 state，框数据直接传给 processAnswerBoxes
+        if (batchFillQuestionId === null) {
+          setQuestionBoxes(prev => [...prev, newBox]);
+        }
         // 分步/跨文件模式：按步骤自动设定框类型，跳过类型选择弹窗
         if (workMode === 'same-file' || workMode === 'cross-file') {
           if (manualAnswerLinking || flowStep === 'manual_link') {
@@ -2925,13 +2928,25 @@ export function UploadQuestionDialog({
           // 步骤2：默认题干框，无需弹窗（type 已设为 question）
         }
 
-        // 批量补全题干模式：框选后自动识别并回填到第一个空子题
+        // 批量补全题干模式：不写框到 state，立即查空子题，精确标 loading
         if (batchFillQuestionId !== null && workMode !== 'questions-only') {
+          const targetQ = questionsRef.current.find(q => q.id === batchFillQuestionId);
+          if (!targetQ) return;
+          const emptySub = findFirstEmptySubQuestion(targetQ);
+          if (!emptySub) {
+            setToastMessage('所有子题已完成');
+            setTimeout(() => setToastMessage(''), 3000);
+            setIsDrawing(false);
+            setDrawStart(null);
+            setCurrentBox(null);
+            return;
+          }
           setPendingAnswerTargetId(null);
           setPendingLinkBoxId(null);
           setShowAnswerLinkPicker(false);
           setIsProcessing(true);
-          void processAnswerBoxes([newBox], undefined, batchFillQuestionId);
+          setManualLinkProcessingTarget({ questionId: batchFillQuestionId!, field: 'options', subQuestionId: emptySub.id });
+          void processAnswerBoxes([newBox], undefined, batchFillQuestionId, emptySub.id);
         }
       }
     }
@@ -3151,18 +3166,21 @@ export function UploadQuestionDialog({
   };
 
   // 处理答案框：裁剪后调用答案提取 API，匹配到已有题目
-  const processAnswerBoxes = async (boxes: QuestionBox[], directTarget?: ManualLinkTarget | null, batchFillQuestionId?: number | null) => {
+  const processAnswerBoxes = async (boxes: QuestionBox[], directTarget?: ManualLinkTarget | null, batchFillQuestionId?: number | null, batchFillTargetSubId?: number) => {
     setProcessingMessage(`正在裁剪 ${boxes.length} 个答案区域...`);
     const hasDirectTarget = directTarget != null;
     const isBatchFill = batchFillQuestionId != null;
-    const cleanupBoxId = boxes[0]?.id;
+    const cleanupBoxId = isBatchFill ? null : boxes[0]?.id;  // batch fill 不写框到 state，无需清理
 
     setTimeout(() => {
-      if (hasDirectTarget || isBatchFill) {
+      if (hasDirectTarget) {
         setManualAnswerLinking(false);
         setManualLinkTarget(null);
         setManualLinkProcessingTarget(null);
         if (cleanupBoxId) setQuestionBoxes(prev => prev.filter(b => b.id !== cleanupBoxId));
+      }
+      if (isBatchFill) {
+        setManualLinkProcessingTarget(null);
       }
     }, 2000);
 
@@ -3182,8 +3200,10 @@ export function UploadQuestionDialog({
         setAnswerProcessingForQuestionIds(processingIds);
       }
     } else if (isBatchFill) {
-      // 批量补全：标记父题选项区加载态，不触发答案/解析区
-      setManualLinkProcessingTarget({ questionId: batchFillQuestionId!, field: 'options' });
+      // 批量补全：精确标记到目标子题选项区（已在 handleMouseUp 设置，此处作为兜底）
+      if (!manualLinkProcessingTarget?.subQuestionId) {
+        setManualLinkProcessingTarget({ questionId: batchFillQuestionId!, field: 'options', subQuestionId: batchFillTargetSubId });
+      }
     } else {
       // 批量处理：使用 answerProcessingForQuestionIds
       setAnswerProcessingForQuestionIds(processingIds);
@@ -3497,28 +3517,24 @@ export function UploadQuestionDialog({
                   setProcessingMessage(
                     isContentField ? '内容识别完成' : '答案提取完成'
                   );
-                } else if (isBatchFill && result.hasOptions !== undefined) {
-                  // 批量补全模式：找到第一个选项全空的子题 → 回填
+                } else if (isBatchFill && result.hasOptions !== undefined && batchFillTargetSubId !== undefined) {
+                  // 批量补全模式：直接回填到预先确定的目标子题
                   const batchResult = result as { hasOptions: boolean; options: Array<{ label: string; content: string }>; plainContent: string };
                   const targetQ = questionsRef.current.find(q => q.id === batchFillQuestionId);
                   if (targetQ) {
-                    const emptySub = findFirstEmptySubQuestion(targetQ);
-                    if (emptySub) {
-                      if (batchResult.hasOptions && batchResult.options.length > 0) {
-                        setQuestions(prev => prev.map(q => {
-                          if (q.id !== batchFillQuestionId) return q;
-                          return applyManualLinkOptionsToQuestion(q, emptySub.id, batchResult.options);
-                        }));
-                      } else if (batchResult.plainContent) {
-                        setQuestions(prev => prev.map(q => {
-                          if (q.id !== batchFillQuestionId) return q;
-                          return applyManualLinkTargetToQuestion(q, 'content', batchResult.plainContent, emptySub.id);
-                        }));
-                      }
-                      setProcessingMessage(`已填入第 ${(targetQ.subQuestions || []).indexOf(emptySub) + 1} 小题`);
-                    } else {
-                      setProcessingMessage('所有子题已完成');
+                    const subIndex = (targetQ.subQuestions || []).findIndex(s => s.id === batchFillTargetSubId);
+                    if (batchResult.hasOptions && batchResult.options.length > 0) {
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== batchFillQuestionId) return q;
+                        return applyManualLinkOptionsToQuestion(q, batchFillTargetSubId!, batchResult.options);
+                      }));
+                    } else if (batchResult.plainContent) {
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== batchFillQuestionId) return q;
+                        return applyManualLinkTargetToQuestion(q, 'content', batchResult.plainContent, batchFillTargetSubId);
+                      }));
                     }
+                    setProcessingMessage(`已填入第 ${subIndex >= 0 ? subIndex + 1 : '?'} 小题`);
                   }
                 } else if (result.preMatchedAnswers && (result.preMatchedAnswers as any[]).length > 0) {
                   const preMatched = result.preMatchedAnswers as Array<{
@@ -7373,7 +7389,7 @@ export function UploadQuestionDialog({
                             <MathEditable
                               value={question.content}
                               onChange={(val) => handleUpdateContent(question.id, val)}
-                              className="w-full text-sm text-gray-700 bg-gray-50 p-2 rounded border resize-y min-h-[120px] max-h-[300px] focus:outline-none focus:border-blue-500"
+                              className="w-full text-sm text-gray-700 bg-gray-50 p-2 rounded border resize-y min-h-[120px] focus:outline-none focus:border-blue-500"
                               placeholder="请输入题目内容"
                             />
                           </div>
@@ -7618,7 +7634,7 @@ export function UploadQuestionDialog({
                                 value={question.analysis || ''}
                                 onChange={(val) => handleUpdateAnalysis(question.id, val)}
                                 placeholder='请输入解析'
-                                className="w-full px-3 py-1.5 pr-8 border rounded text-sm resize-y min-h-[3rem] max-h-48 focus:outline-none focus:border-emerald-500"
+                                className="w-full px-3 py-1.5 pr-8 border rounded text-sm resize-y min-h-[3rem] focus:outline-none focus:border-emerald-500"
                               />
                               {question.analysis && (
                                 <button
@@ -7646,7 +7662,7 @@ export function UploadQuestionDialog({
                             {!firstQuestionWithParentAnswerClearId && question.id === firstQuestionWithSubAnswerClearId &&
                               renderRequirementMarker('REVIEW_STEP-018', 'right-1 top-0')}
                             <div className="text-xs font-medium text-gray-500 mb-2">子题答案</div>
-                            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                            <div className="space-y-2 pr-1">
                             {(question.subQuestions || []).map((sub, subIndex) => (<Fragment key={sub.id}>
                               <div className="bg-gray-50 rounded-md px-3 py-2.5">
                                 <div className="flex items-center justify-between gap-2 mb-2">
@@ -7673,7 +7689,7 @@ export function UploadQuestionDialog({
                                       <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 text-blue-500 animate-spin" /><span className="text-sm text-blue-600">题干识别中...</span></div>
                                     ) : (<>
                                     <div className="flex items-center justify-between mb-0.5"><div className="flex items-center gap-1"><label className="text-xs text-gray-500">子题题干</label><button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'content', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id) || isSubQuestionContentProcessing(question.id, sub.id)} className="p-0.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" title="框选内容并填入子题题干区"><Link2Icon className="w-3 h-3" /></button></div></div>
-                                    <textarea value={sub.content} onChange={(e) => handleUpdateSubContent(question.id, sub.id, e.target.value)} placeholder="请输入子题题干内容" rows={2} className="w-full px-2.5 py-1.5 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500" />
+                                    <textarea value={sub.content} onChange={(e) => handleUpdateSubContent(question.id, sub.id, e.target.value)} placeholder="请输入子题题干内容" className="w-full px-2.5 py-1.5 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500" />
                                     </>)}
                                   </div>
                                 )}
@@ -7868,7 +7884,7 @@ export function UploadQuestionDialog({
                                           onChange={(e) => handleUpdateSubAnalysis(question.id, sub.id, e.target.value)}
                                           placeholder="选填"
                                           rows={2}
-                                          className="w-full px-2.5 py-1.5 pr-8 border rounded text-sm bg-white resize-y min-h-[2rem] max-h-32 focus:outline-none focus:border-emerald-500"
+                                          className="w-full px-2.5 py-1.5 pr-8 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500"
                                         />
                                         {sub.analysis && (
                                           <button

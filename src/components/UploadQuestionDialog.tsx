@@ -3145,17 +3145,30 @@ export function UploadQuestionDialog({
       if (hasDirectTarget) {
         setManualAnswerLinking(false);
         setManualLinkTarget(null);
+        setManualLinkProcessingTarget(null);
         if (cleanupBoxId) setQuestionBoxes(prev => prev.filter(b => b.id !== cleanupBoxId));
       }
     }, 2000);
 
-    // 标记正在处理答案的题目
+    // 标记正在处理的题目（按 field 分类，避免答案/解析区在选项/题干识别时闪烁）
     const processingIds = new Set<number | string>();
     boxes.forEach(b => {
       if (b.linkedQuestionId) processingIds.add(b.linkedQuestionId);
     });
-    if (directTarget) processingIds.add(directTarget.questionId);
-    setAnswerProcessingForQuestionIds(processingIds);
+    if (directTarget) {
+      const isContentField = directTarget.field === 'content' || directTarget.field === 'options';
+      if (isContentField) {
+        // 选项/题干识别：仅标记 precise target，不触发答案/解析区的加载态
+        setManualLinkProcessingTarget(directTarget);
+      } else {
+        // 答案/解析识别：标记到 answerProcessingForQuestionIds
+        processingIds.add(directTarget.questionId);
+        setAnswerProcessingForQuestionIds(processingIds);
+      }
+    } else {
+      // 批量处理：使用 answerProcessingForQuestionIds
+      setAnswerProcessingForQuestionIds(processingIds);
+    }
     setAnswerMatchFailedForQuestionIds(new Set());
 
     // 自动滚动到第一个被处理的题目
@@ -3567,6 +3580,7 @@ export function UploadQuestionDialog({
                 });
                 setAnswerMatchFailedForQuestionIds(failedIds);
                 setAnswerProcessingForQuestionIds(new Set());
+                setManualLinkProcessingTarget(null);
 
                 // 如果有未匹配答案的题目，高亮闪烁并定位到第一个
                 if (failedIds.size > 0) {
@@ -3605,6 +3619,7 @@ export function UploadQuestionDialog({
       console.error('[答案框处理失败]', err);
       setProcessingMessage(`答案提取失败: ${message}`);
       setAnswerProcessingForQuestionIds(new Set());
+      setManualLinkProcessingTarget(null);
       setBatchProcessing(false);
       restoreActiveRecognitionBoxes();
       if (directTarget) {
@@ -7268,7 +7283,12 @@ export function UploadQuestionDialog({
                           </div>
                         )}
                         {/* 父题选项区域 */}
-                        {choiceQuestionTypes.includes(question.questionType) && (
+                        {choiceQuestionTypes.includes(question.questionType) && (() => {
+                          const isParentOptionsLoading =
+                            manualLinkProcessingTarget?.questionId === question.id &&
+                            manualLinkProcessingTarget.subQuestionId === undefined &&
+                            (manualLinkProcessingTarget.field === 'content' || manualLinkProcessingTarget.field === 'options');
+                          return (
                           <div className="mb-3 pl-2 border-l-3 border-blue-400 bg-blue-50/60 rounded-r p-2 space-y-1.5">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1">
@@ -7281,7 +7301,12 @@ export function UploadQuestionDialog({
                                 <button type="button" onClick={() => handleUpdateOptionCount(question.id, Math.min(26, (question.optionCount || 4) + 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">+</button>
                               </div>
                             </div>
-                            {viewMode === 'image'
+                            {isParentOptionsLoading ? (
+                              <div className="flex items-center gap-2 py-1">
+                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                                <span className="text-sm text-blue-600">选项识别中...</span>
+                              </div>
+                            ) : viewMode === 'image'
                               ? (
                                 <div className="flex flex-wrap gap-2">
                                   {Array.from({ length: question.optionCount || 4 }, (_, i) => {
@@ -7304,7 +7329,7 @@ export function UploadQuestionDialog({
                                 })
                               )}
                           </div>
-                        )}
+                          ); })()}
 
                         {/* 父题答案输入：无子题时常规显示；有子题但答案未能按标记拆分时保留父题区供人工拆分 */}
                         {workMode !== 'questions-only' && (!(compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0) || getQuestionMatchInfo(question).needsManualSplit) && (

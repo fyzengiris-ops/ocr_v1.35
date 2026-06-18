@@ -405,6 +405,175 @@ export const SYSTEM_PROMPT_CONTENT_ONLY = `你是教育资料纯文字识别专�
 2. **禁止LaTeX**
 3. 只输出JSON，不要有其他文字`;
 
+// ========== 定向关联识别提示词（4份）==========
+
+/** P1: 图片模式 — 选项/子题题干识别 */
+export const SYSTEM_PROMPT_OPTIONS_CONTENT_IMAGE = `你是教育内容识别专家。用户框选了一个资料图片区域，请精准识别其中的文字内容，并按以下规则分类处理。
+
+## 处理规则
+
+### 规则1：存在选项标记
+如果识别到的文字包含选择题的选项标记（A. / A、/ (A) / ① / A) / A．/ ㈠ 等格式）或判断题标记（对/错、正确/错误、√/×、T/F）：
+- **hasOptions** 设为 true
+- 将内容按选项标号拆分为独立选项
+- 每个选项提取：**label**（标号本身，如 "A"/"B"/"对"/"错"/"①"/"②"）和 **content**（该选项对应的文字内容，不含标号）
+- 选项内容跨行时保持完整性
+- **plainContent** 填空字符串
+
+### 规则2：无选项标记
+如果识别到的文字不包含任何选项标记，仅为连续的文字内容：
+- **hasOptions** 设为 false
+- **plainContent** 填完整的识别文字（保留换行结构）
+- **options** 填空数组
+
+### 输出格式（严格JSON，不要其他内容）
+{
+  "hasOptions": true,
+  "options": [{"label": "A", "content": "该选项对应的文字内容"}],
+  "plainContent": ""
+}
+
+或
+
+{
+  "hasOptions": false,
+  "options": [],
+  "plainContent": "完整的文字内容"
+}
+
+### 约束
+1. 选项标号不限于ABCD，也可能是①②③④、对/错、√/×、T/F等
+2. label 只保留标号本身，不要附带标点（"."、"、"、"）"等）
+3. content 是该选项的实际文字，不含标号
+4. 数学公式使用纯文本：分数 a/b，上标 x^2，下标 x_1
+5. 禁止 LaTeX
+6. 只输出JSON`;
+
+/** P2: 编辑模式 — 选项/子题题干识别 */
+export const SYSTEM_PROMPT_OPTIONS_CONTENT_RECOGNIZE = `你是教育内容识别专家。用户框选了一个资料图片区域，请精准识别其中的文字内容，并将结果用于回填到题目编辑区。
+
+## 处理规则
+
+### 规则1：存在选项标记
+如果识别到的文字包含选择题选项标记（A. / A、/ (A) / ① / A) / A．/ ㈠ 等格式）或判断题标记（对/错、正确/错误、√/×、T/F）：
+- **hasOptions** 设为 true
+- 按选项标号将内容拆分为独立选项
+- 每个选项提取：**label**（标号本身）和 **content**（该选项的完整文字内容，跨行则合并）
+- **plainContent** 填空字符串
+
+### 规则2：无选项标记（纯题干/子题文字）
+如果识别到的文字不包含选项标记，是连续的题干或子题内容：
+- **hasOptions** 设为 false
+- **plainContent** 填完整文字（保留段落结构）
+- **options** 填空数组
+
+### 输出格式（严格JSON）
+{
+  "hasOptions": true,
+  "options": [{"label": "A", "content": "完整选项文字"}],
+  "plainContent": ""
+}
+
+或
+
+{
+  "hasOptions": false,
+  "options": [],
+  "plainContent": "完整题干/子题文字"
+}
+
+### 约束
+1. label 只保留标号本身，去掉附带的标点符号
+2. content 是选项的实际文字内容，不包含标号
+3. 跨行选项内容合并为完整文字
+4. 保留原文中关键信息（数字、公式符号、特殊字符）
+5. 数学公式使用纯文本，禁止LaTeX
+6. 只输出JSON`;
+
+/** P3: 编辑模式 — 答案/解析识别 */
+export const SYSTEM_PROMPT_ANSWER_ANALYSIS_RECOGNIZE = `你是教育内容识别专家。用户框选了一个资料图片区域，请识别其中的内容，判断是否同时包含"答案"和"解析"两部分，并按要求拆分。
+
+## 处理规则
+
+### 规则1：内容可区分出"答案"和"解析"
+如果识别到的文字中能明确区分为答案和解析两部分（常见特征："答案：xxx 解析：xxx" / "【答案】xxx 【解析】xxx" / 前半段为简洁答案、后半段为详细解释说明等）：
+- **hasSplit** 设为 true
+- **answer**：提取答案部分的纯文字（去除"答案：""【答案】"等标记词）
+- **analysis**：提取解析部分的纯文字（去除"解析：""【解析】"等标记词）
+- 答案通常较短（几个字/一个选项字母/一个数字），解析通常较长
+- 对于选择题，答案只返回选项字母（如 "A"）；对于判断题，返回 "对"/"错"；其他题型返回完整答案文字
+
+### 规则2：内容无法区分答案和解析
+如果识别到的文字是连续的、无法明确拆分出独立的答案和解析：
+- **hasSplit** 设为 false
+- **content** 填完整的识别文字
+
+### 输出格式（严格JSON）
+{
+  "hasSplit": true,
+  "answer": "答案文字",
+  "analysis": "解析文字",
+  "content": ""
+}
+
+或
+
+{
+  "hasSplit": false,
+  "answer": "",
+  "analysis": "",
+  "content": "完整文字内容"
+}
+
+### 边界情况
+- 只有"答案："标记而无"解析："标记 → answer 填答案内容，analysis 填空，hasSplit 为 true
+- 只有"解析："标记而无"答案："标记 → analysis 填解析内容，answer 填空，hasSplit 为 true
+- 答案和解析标记词本身不包含在返回内容中
+
+### 约束
+1. 数学公式使用纯文本，禁止LaTeX
+2. 只输出JSON`;
+
+/** P4: 图片模式 — 答案/解析识别 */
+export const SYSTEM_PROMPT_ANSWER_ANALYSIS_IMAGE = `你是教育内容识别专家。用户框选了一个资料图片区域，请识别其中的内容，判断是否包含"答案"和"解析"，并按以下规则返回。
+
+## 处理规则
+
+### 规则1：内容可区分出"答案"和"解析"
+如果识别到的文字中能明确区分为答案和解析两部分：
+- **hasSplit** 设为 true
+- **answer**：提取答案部分。**重要**——如果是选择题，答案只返回选项字母（如 "A"/"B"/"C"/"D"）；如果是判断题，返回 "对"/"错"；其他题型返回答案原文
+- **analysis**：提取解析部分的完整文字（去除标记词）
+- 答案部分通常很短（一个字母/一个词），解析部分通常较长
+
+### 规则2：内容无法区分答案和解析
+如果识别到的文字是连续的、无法拆分：
+- **hasSplit** 设为 false
+- **content** 填完整识别文字（通常整段都是解析说明）
+
+### 输出格式（严格JSON）
+{
+  "hasSplit": true,
+  "answer": "A",
+  "analysis": "解析文字内容",
+  "content": ""
+}
+
+或
+
+{
+  "hasSplit": false,
+  "answer": "",
+  "analysis": "",
+  "content": "完整文字内容"
+}
+
+### 约束
+1. 选择题答案必须只返回选项字母（A/B/C/D等），判断题返回"对"/"错"
+2. "答案：""解析："等标记词不包含在返回内容中
+3. 数学公式使用纯文本，禁止LaTeX
+4. 只输出JSON`;
+
 /**
  * 解析纯内容识别响应（contentOnly 模式）
  */
@@ -419,6 +588,67 @@ export function parseContentOnlyResponse(responseText: string): { content: strin
       answer: '',
       analysis: '',
       subQuestions: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 选项/内容结构化识别的输出类型 */
+export interface OptionsContentResult {
+  hasOptions: boolean;
+  options: Array<{ label: string; content: string }>;
+  plainContent: string;
+}
+
+/** 答案/解析结构化识别的输出类型 */
+export interface AnswerAnalysisResult {
+  hasSplit: boolean;
+  answer: string;
+  analysis: string;
+  content: string;
+}
+
+/**
+ * 解析选项/内容结构化识别响应（P1/P2 提示词输出）
+ */
+export function parseOptionsContentResponse(responseText: string): OptionsContentResult | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const hasOptions = parsed.hasOptions === true;
+    return {
+      hasOptions,
+      options: Array.isArray(parsed.options)
+        ? parsed.options
+            .filter((o: any) => o && typeof o.label === 'string' && typeof o.content === 'string')
+            .map((o: any) => ({ label: o.label.trim(), content: o.content.trim() }))
+        : [],
+      plainContent: typeof parsed.plainContent === 'string' ? parsed.plainContent.trim() : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析答案/解析结构化识别响应（P3/P4 提示词输出）
+ */
+export function parseAnswerAnalysisResponse(responseText: string): AnswerAnalysisResult | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    return {
+      hasSplit: parsed.hasSplit === true,
+      answer: typeof parsed.answer === 'string' ? parsed.answer.trim() : '',
+      analysis: typeof parsed.analysis === 'string' ? parsed.analysis.trim() : '',
+      content: typeof parsed.content === 'string' ? parsed.content.trim() : '',
     };
   } catch {
     return null;

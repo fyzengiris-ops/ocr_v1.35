@@ -19,6 +19,10 @@ import {
   SYSTEM_PROMPT_SMART,
   SYSTEM_PROMPT_ANSWER_ONLY,
   SYSTEM_PROMPT_CONTENT_ONLY,
+  SYSTEM_PROMPT_OPTIONS_CONTENT_IMAGE,
+  SYSTEM_PROMPT_OPTIONS_CONTENT_RECOGNIZE,
+  SYSTEM_PROMPT_ANSWER_ANALYSIS_RECOGNIZE,
+  SYSTEM_PROMPT_ANSWER_ANALYSIS_IMAGE,
   buildUserMessage,
   buildUserMessageCropped,
   parseAIResponse,
@@ -26,6 +30,8 @@ import {
   parseSmartAIResponse,
   parseAnswerOnlyResponse,
   parseContentOnlyResponse,
+  parseOptionsContentResponse,
+  parseAnswerAnalysisResponse,
   smartMatchQuestionsAndAnswers,
   generateMatchedQuestions,
   generateAnswerMarkers,
@@ -86,8 +92,8 @@ function tryFixAiJson(raw: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as RecognizeRequest & { croppedMode?: boolean; subjectInfo?: string; answerOnly?: boolean; globalMatch?: boolean; contentOnly?: boolean; existingQuestions?: Array<{ id: number; number: number; content: string; questionType: string; hasAnswer: boolean; subQuestions?: Array<{ id: number; number: number; content: string; questionType: string; hasAnswer: boolean }> }>; answerMode?: boolean };
-    const { pages, userBoxes = [], options = {}, croppedMode = false, subjectInfo, answerOnly = false, globalMatch = false, existingQuestions = [], answerMode = false, contentOnly = false } = body;
+    const body = (await request.json()) as RecognizeRequest & { croppedMode?: boolean; subjectInfo?: string; answerOnly?: boolean; globalMatch?: boolean; contentOnly?: boolean; existingQuestions?: Array<{ id: number; number: number; content: string; questionType: string; hasAnswer: boolean; subQuestions?: Array<{ id: number; number: number; content: string; questionType: string; hasAnswer: boolean }> }>; answerMode?: boolean; viewMode?: 'image' | 'recognize'; targetField?: string; questionType?: string; manualLink?: boolean };
+    const { pages, userBoxes = [], options = {}, croppedMode = false, subjectInfo, answerOnly = false, globalMatch = false, existingQuestions = [], answerMode = false, contentOnly = false, viewMode = 'image', targetField, questionType, manualLink = false } = body;
 
     // 调试日志：打印请求概要
     console.log('[RecognizeAPI] 收到请求:', {
@@ -136,10 +142,13 @@ export async function POST(request: NextRequest) {
       // 全局匹配模式：AI 从整页定位答案并关联到已有题目
       return handleGlobalMatchMode(client, pages, existingQuestions, customHeaders);
     } else if (contentOnly) {
-      // 纯内容识别模式：只识别框选区域的文字，不做答案匹配
-      return handleContentOnlyMode(client, pages, customHeaders);
+      // 纯内容识别模式：使用 P1/P2 提示词（选项/题干结构化识别）
+      return handleContentOnlyMode(client, pages, customHeaders, viewMode);
+    } else if (answerMode && manualLink) {
+      // 定向关联答案模式：使用 P3/P4 提示词（答案/解析结构化识别）
+      return handleAnswerModeWithViewMode(client, pages, userBoxes, customHeaders, subjectInfo, existingQuestions, viewMode);
     } else if (answerMode) {
-      // 纯答案提取模式：对答案框进行答案提取，传入已有题目用于关联匹配
+      // 批量答案提取模式：使用原有智能识别
       return handleSmartMode(client, pages, userBoxes, customHeaders, subjectInfo, undefined, existingQuestions);
     } else if (answerOnly) {
       // 答案匹配模式：只提取答案和解析
@@ -435,16 +444,21 @@ async function handleAnswerOnlyMode(
 }
 
 /**
- * 纯内容识别模式处理（题干/选项关联）
- * 只做纯文字识别，不进行答案匹配或结构化拆分
+ * 纯内容识别模式处理（选项/题干关联）
+ * 使用 P1（图片模式）或 P2（编辑模式）提示词进行选项/题干结构化识别
  */
 async function handleContentOnlyMode(
   client: LLMClient,
   croppedImages: PageImage[],
-  customHeaders: Record<string, string>
+  customHeaders: Record<string, string>,
+  viewMode: 'image' | 'recognize' = 'image'
 ) {
+  const systemPrompt = viewMode === 'recognize'
+    ? SYSTEM_PROMPT_OPTIONS_CONTENT_RECOGNIZE
+    : SYSTEM_PROMPT_OPTIONS_CONTENT_IMAGE;
+
   const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT_CONTENT_ONLY },
+    { role: 'system' as const, content: systemPrompt },
     { role: 'user' as const, content: buildUserMessageCropped(croppedImages) },
   ];
 
@@ -497,7 +511,97 @@ async function handleContentOnlyMode(
 
       try {
         sendProgress('正在解析...');
-        const result = parseContentOnlyResponse(fullResponse);
+        const result = parseOptionsContentResponse(fullResponse);
+        if (!result) {
+          sendError('识别结果格式不正确，请重试');
+          controller.close();
+          return;
+        }
+        sendComplete(result);
+      } catch (e) {
+        sendError(e instanceof Error ? e.message : '解析失败');
+      }
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+  });
+}
+
+/**
+ * 答案模式处理（定向关联入口，使用 P3/P4 提示词）
+ * 对用户框选的答案/解析区域进行 AI 识别，返回结构化结果
+ */
+async function handleAnswerModeWithViewMode(
+  client: LLMClient,
+  croppedImages: PageImage[],
+  userBoxes: QuestionBox[],
+  customHeaders: Record<string, string>,
+  subjectInfo?: string,
+  existingQuestions: Array<{ id: number; number: number; content: string; questionType: string; hasAnswer: boolean; subQuestions?: Array<{ id: number; number: number; content: string; questionType: string; hasAnswer: boolean }> }> = [],
+  viewMode: 'image' | 'recognize' = 'image'
+) {
+  const systemPrompt = viewMode === 'recognize'
+    ? SYSTEM_PROMPT_ANSWER_ANALYSIS_RECOGNIZE
+    : SYSTEM_PROMPT_ANSWER_ANALYSIS_IMAGE;
+
+  const messages = [
+    { role: 'system' as const, content: systemPrompt },
+    { role: 'user' as const, content: buildUserMessageCropped(croppedImages, subjectInfo) },
+  ];
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendProgress = (message: string) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'progress', data: { message } })}\n\n`));
+      };
+      const sendComplete = (result: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'complete', data: { result } })}\n\n`));
+      };
+      const sendError = (error: string) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', data: { error } })}\n\n`));
+      };
+
+      const MAX_RETRIES = 2;
+      let fullResponse = '';
+      let lastError = '';
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          if (attempt > 0) sendProgress(`网络异常，正在第${attempt}次重试...`);
+          else sendProgress('正在识别答案/解析...');
+
+          const llmStream = client.stream(messages, {
+            model: 'ep-m-20260522100054-r72qh',
+            temperature: 0.3,
+          });
+
+          fullResponse = '';
+          const streamTimeout = 60000;
+          const streamStart = Date.now();
+
+          for await (const chunk of llmStream) {
+            if (Date.now() - streamStart > streamTimeout) throw new Error('识别超时，请重试');
+            if (chunk.content) fullResponse += chunk.content.toString();
+          }
+          break;
+        } catch (streamError) {
+          lastError = streamError instanceof Error ? streamError.message : String(streamError);
+          if (attempt === MAX_RETRIES) {
+            sendError(lastError);
+            controller.close();
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+
+      try {
+        sendProgress('正在解析...');
+        const result = parseAnswerAnalysisResponse(fullResponse);
         if (!result) {
           sendError('识别结果格式不正确，请重试');
           controller.close();

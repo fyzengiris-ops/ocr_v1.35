@@ -3065,6 +3065,43 @@ export function UploadQuestionDialog({
     return candidates.find((value) => value?.trim())?.trim() || '';
   };
 
+  /** 将 AI 识别的结构化选项结果回填到题目 */
+  const applyManualLinkOptionsToQuestion = (
+    question: Question,
+    subId: number | undefined,
+    options: Array<{ label: string; content: string }>
+  ): Question => {
+    const newOptionContents: Record<string, string> = {};
+    let firstLabel = '';
+    options.forEach(opt => {
+      newOptionContents[opt.label] = opt.content;
+      if (!firstLabel) firstLabel = opt.label;
+    });
+    const newOptionCount = Math.max(question.optionCount || 4, options.length);
+
+    if (subId !== undefined) {
+      return {
+        ...question,
+        subQuestions: (question.subQuestions || []).map(s => {
+          if (s.id !== subId) return s;
+          return {
+            ...s,
+            optionContents: { ...(s.optionContents || {}), ...newOptionContents },
+            optionCount: Math.max(s.optionCount || 4, options.length),
+            // 图片模式：不设置 answer，由用户手动点击选择
+          };
+        }),
+      };
+    }
+
+    // 父题选项回填
+    return {
+      ...question,
+      optionContents: { ...(question.optionContents || {}), ...newOptionContents },
+      optionCount: newOptionCount,
+    };
+  };
+
   const applyManualLinkTargetToQuestion = (question: Question, field: ManualLinkField, text: string, subId?: number): Question => {
     const normalizedText = text.trim();
     if (!normalizedText) return question;
@@ -3075,7 +3112,9 @@ export function UploadQuestionDialog({
         if (s.id !== subId) return s;
         if (field === 'answer') return { ...s, answer: normalizedText, status: 'matched' };
         if (field === 'content') return { ...s, content: normalizedText };
-        return { ...s, analysis: normalizedText };
+        if (field === 'analysis') return { ...s, analysis: normalizedText };
+        // field='options' with subId — handled by applyManualLinkOptionsToQuestion instead
+        return s;
       })};
     }
 
@@ -3090,7 +3129,10 @@ export function UploadQuestionDialog({
       return { ...question, answer: normalizedText, status: 'matched', answerSource: 'manual' };
     }
 
-    return { ...question, analysis: normalizedText, status: hasUsableAnswer(question) ? 'matched' : 'pending_confirm' };
+    if (field === 'content') return { ...question, content: normalizedText };
+    if (field === 'analysis') return { ...question, analysis: normalizedText, status: hasUsableAnswer(question) ? 'matched' : 'pending_confirm' };
+
+    return question;
   };
 
   // 处理答案框：裁剪后调用答案提取 API，匹配到已有题目
@@ -3256,6 +3298,9 @@ export function UploadQuestionDialog({
           subjectInfo,
           answerMode: directTarget?.field === 'content' || directTarget?.field === 'options' ? undefined : true,
           contentOnly: directTarget?.field === 'content' || directTarget?.field === 'options' ? true : undefined,
+          manualLink: directTarget != null,
+          viewMode,
+          targetField: directTarget?.field,
           // 传递已有题目，让后端能将提取的答案正确关联到对应题目（特别是子题结构）
           existingQuestions: questions.map(q => ({
             id: q.id,
@@ -3326,33 +3371,105 @@ export function UploadQuestionDialog({
                 const matchedIds = new Set<number | string>();
 
                 if (directTarget) {
-                  const directBoxId = orderedBoxes[0]?.id;
-                  const directResult =
-                    preMatched?.find((item) => item.boxId === directBoxId) ||
-                    unmatchedAnswers?.find((item) => item.boxId === directBoxId) ||
-                    preMatched?.[0] ||
-                    unmatchedAnswers?.[0];
-                  const directText = extractManualLinkFieldText(directResult, directTarget.field);
+                  const isContentField = directTarget.field === 'content' || directTarget.field === 'options';
+                  const isAnswerField = directTarget.field === 'answer' || directTarget.field === 'analysis';
 
-                  if (directText) {
-                    setQuestions(prev => prev.map(q => {
-                      if (q.id !== directTarget.questionId) return q;
-                      let updated = applyManualLinkTargetToQuestion(q, directTarget.field, directText, directTarget.subQuestionId);
-                      // 若 AI 同时返回了答案和解析，两者都回填（父题和子题均适用）
-                      if (directTarget.field === 'answer' || directTarget.field === 'analysis') {
-                        const otherField = directTarget.field === 'answer' ? 'analysis' : 'answer';
-                        const otherText = extractManualLinkFieldText(directResult, otherField);
-                        if (otherText) updated = applyManualLinkTargetToQuestion(updated, otherField, otherText, directTarget.subQuestionId);
-                      }
-                      return updated;
-                    }))
+                  // ---- contentOnly 模式返回：{ hasOptions, options, plainContent } ----
+                  if (isContentField && result.hasOptions !== undefined) {
+                    const optionsResult = result as { hasOptions: boolean; options: Array<{ label: string; content: string }>; plainContent: string };
+
+                    if (optionsResult.hasOptions && optionsResult.options.length > 0) {
+                      // 有选项标记 → 拆分回填选项
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== directTarget.questionId) return q;
+                        return applyManualLinkOptionsToQuestion(q, directTarget.subQuestionId, optionsResult.options);
+                      }));
+                    } else if (optionsResult.plainContent) {
+                      // 无选项标记 → 回填为题干/子题题干
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== directTarget.questionId) return q;
+                        return applyManualLinkTargetToQuestion(q, 'content', optionsResult.plainContent, directTarget.subQuestionId);
+                      }));
+                    }
                     matchedIds.add(directTarget.questionId);
                     setHighlightedQuestionIds(new Set([directTarget.questionId]));
                     setTimeout(() => setHighlightedQuestionIds(new Set()), 2500);
                   }
 
-                  setProcessingMessage('答案提取完成');
-                } else if (preMatched && preMatched.length > 0) {
+                  // ---- answerMode 返回：{ hasSplit, answer, analysis, content } ----
+                  if (isAnswerField && result.hasSplit !== undefined) {
+                    const answerResult = result as { hasSplit: boolean; answer: string; analysis: string; content: string };
+
+                    if (answerResult.hasSplit) {
+                      // 可拆分 → 分别回填答案和解析
+                      // P4（图片模式）下 AI 已返回标号（如"A"），设置 answer 即可触发选项按钮高亮
+                      // P3（编辑模式）下 AI 返回完整答案文字，回填到答案输入框
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== directTarget.questionId) return q;
+                        let updated = q;
+                        if (answerResult.answer) {
+                          updated = applyManualLinkTargetToQuestion(updated, 'answer', answerResult.answer, directTarget.subQuestionId);
+                        }
+                        if (answerResult.analysis) {
+                          updated = applyManualLinkTargetToQuestion(updated, 'analysis', answerResult.analysis, directTarget.subQuestionId);
+                        }
+                        return updated;
+                      }));
+                    } else if (answerResult.content) {
+                      // 不可拆分 → 回填到点击的字段
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== directTarget.questionId) return q;
+                        return applyManualLinkTargetToQuestion(q, directTarget.field, answerResult.content, directTarget.subQuestionId);
+                      }));
+                    }
+                    matchedIds.add(directTarget.questionId);
+                    setHighlightedQuestionIds(new Set([directTarget.questionId]));
+                    setTimeout(() => setHighlightedQuestionIds(new Set()), 2500);
+                  }
+
+                  // ---- 旧格式兼容：preMatched/unmatched 格式（批量识别等非定向场景） ----
+                  if (!isContentField && !isAnswerField || (result.preMatchedAnswers || result.unmatchedAnswers)) {
+                    const preMatched = result.preMatchedAnswers as Array<{
+                      id: string; questionId: number; questionNumber: number;
+                      answer: string; analysis: string; boxId: string;
+                    }> | undefined;
+                    const unmatchedAnswers = result.unmatchedAnswers as Array<{
+                      id: string; questionNumber: number | null; content: string;
+                      answer: string; analysis: string; boxId: string;
+                    }> | undefined;
+                    const directBoxId = orderedBoxes[0]?.id;
+                    const directResult =
+                      preMatched?.find((item) => item.boxId === directBoxId) ||
+                      unmatchedAnswers?.find((item) => item.boxId === directBoxId) ||
+                      preMatched?.[0] ||
+                      unmatchedAnswers?.[0];
+                    const directText = extractManualLinkFieldText(directResult, directTarget.field);
+
+                    if (directText) {
+                      setQuestions(prev => prev.map(q => {
+                        if (q.id !== directTarget.questionId) return q;
+                        let updated = applyManualLinkTargetToQuestion(q, directTarget.field, directText, directTarget.subQuestionId);
+                        if (directTarget.field === 'answer' || directTarget.field === 'analysis') {
+                          const otherField = directTarget.field === 'answer' ? 'analysis' : 'answer';
+                          const otherText = extractManualLinkFieldText(directResult, otherField);
+                          if (otherText) updated = applyManualLinkTargetToQuestion(updated, otherField, otherText, directTarget.subQuestionId);
+                        }
+                        return updated;
+                      }))
+                      matchedIds.add(directTarget.questionId);
+                      setHighlightedQuestionIds(new Set([directTarget.questionId]));
+                      setTimeout(() => setHighlightedQuestionIds(new Set()), 2500);
+                    }
+                  }
+
+                  setProcessingMessage(
+                    isContentField ? '内容识别完成' : '答案提取完成'
+                  );
+                } else if (result.preMatchedAnswers && (result.preMatchedAnswers as any[]).length > 0) {
+                  const preMatched = result.preMatchedAnswers as Array<{
+                    id: string; questionId: number; questionNumber: number;
+                    answer: string; analysis: string; boxId: string;
+                  }>;
                   let preMatchedCount = 0;
                   setQuestions(prev => {
                     let updated = [...prev];

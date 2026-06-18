@@ -1761,7 +1761,8 @@ export function UploadQuestionDialog({
   const [showAnswerLinkPicker, setShowAnswerLinkPicker] = useState(false); // 第二步画答案框后的关联题号选择器
   const [pendingLinkBoxId, setPendingLinkBoxId] = useState<string | null>(null); // 待关联的答案框ID
   const [manualAnswerLinking, setManualAnswerLinking] = useState(false); // 第四步内的手动关联答案子状态
-  const [manualLinkTarget, setManualLinkTarget] = useState<ManualLinkTarget | null>(null); // 从题卡答案/解析入口进入时的定向回填目标
+  const [manualLinkTarget, setManualLinkTarget] = useState<ManualLinkTarget | null>(null);
+  const [manualLinkProcessingTarget, setManualLinkProcessingTarget] = useState<ManualLinkTarget | null>(null);
   const [recognitionResult, setRecognitionResult] = useState<RecognitionResult | null>(null);
   
   // 使用 ref 存储最新的 questions，解决闭包问题
@@ -3095,6 +3096,16 @@ export function UploadQuestionDialog({
   // 处理答案框：裁剪后调用答案提取 API，匹配到已有题目
   const processAnswerBoxes = async (boxes: QuestionBox[], directTarget?: ManualLinkTarget | null) => {
     setProcessingMessage(`正在裁剪 ${boxes.length} 个答案区域...`);
+    const hasDirectTarget = directTarget != null;
+    const cleanupBoxId = boxes[0]?.id;
+
+    setTimeout(() => {
+      if (hasDirectTarget) {
+        setManualAnswerLinking(false);
+        setManualLinkTarget(null);
+        if (cleanupBoxId) setQuestionBoxes(prev => prev.filter(b => b.id !== cleanupBoxId));
+      }
+    }, 2000);
 
     // 标记正在处理答案的题目
     const processingIds = new Set<number | string>();
@@ -3324,11 +3335,17 @@ export function UploadQuestionDialog({
                   const directText = extractManualLinkFieldText(directResult, directTarget.field);
 
                   if (directText) {
-                    setQuestions(prev => prev.map(q =>
-                      q.id === directTarget.questionId
-                        ? applyManualLinkTargetToQuestion(q, directTarget.field, directText, directTarget.subQuestionId)
-                        : q
-                    ));
+                    setQuestions(prev => prev.map(q => {
+                      if (q.id !== directTarget.questionId) return q;
+                      let updated = applyManualLinkTargetToQuestion(q, directTarget.field, directText, directTarget.subQuestionId);
+                      // 若 AI 同时返回了答案和解析，两者都回填（父题和子题均适用）
+                      if (directTarget.field === 'answer' || directTarget.field === 'analysis') {
+                        const otherField = directTarget.field === 'answer' ? 'analysis' : 'answer';
+                        const otherText = extractManualLinkFieldText(directResult, otherField);
+                        if (otherText) updated = applyManualLinkTargetToQuestion(updated, otherField, otherText, directTarget.subQuestionId);
+                      }
+                      return updated;
+                    }))
                     matchedIds.add(directTarget.questionId);
                     setHighlightedQuestionIds(new Set([directTarget.questionId]));
                     setTimeout(() => setHighlightedQuestionIds(new Set()), 2500);
@@ -4289,8 +4306,6 @@ export function UploadQuestionDialog({
                   if (manualLinkTarget) {
                     setManualAnswerLinking(false);
                     setManualLinkTarget(null);
-                    const cleanupId = boxes[0]?.id;
-                    if (cleanupId) setQuestionBoxes(prev => prev.filter(b => b.id !== cleanupId));
                   }
                 }, 2000);
                 return;
@@ -5043,8 +5058,6 @@ export function UploadQuestionDialog({
   };
 
   // 更新子题答案
-    manualLinkProcessingTarget?.questionId === questionId && manualLinkProcessingTarget.subQuestionId === subQuestionId &&
-    (manualLinkProcessingTarget.field === 'content' || manualLinkProcessingTarget.field === 'options');
   const handleUpdateSubAnswer = (questionId: number, subId: number, answer: string) => {
     setQuestions(prev => prev.map(q => {
       if (q.id !== questionId) return q;

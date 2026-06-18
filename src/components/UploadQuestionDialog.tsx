@@ -1764,6 +1764,9 @@ export function UploadQuestionDialog({
   const [manualLinkTarget, setManualLinkTarget] = useState<ManualLinkTarget | null>(null);
   const [manualLinkProcessingTarget, setManualLinkProcessingTarget] = useState<ManualLinkTarget | null>(null);
   const [recognitionResult, setRecognitionResult] = useState<RecognitionResult | null>(null);
+  // 批量补全题干（英语+完形填空）
+  const [batchFillQuestionId, setBatchFillQuestionId] = useState<number | null>(null);
+  const [batchFillHiddenBoxIds, setBatchFillHiddenBoxIds] = useState<Set<string>>(new Set());
   
   // 使用 ref 存储最新的 questions，解决闭包问题
   const questionsRef = useRef<Question[]>(questions);
@@ -2514,7 +2517,10 @@ export function UploadQuestionDialog({
 
   const isReviewStep = flowStep === 'review' || flowStep === 'manual_link';
   const isSelectionStep = flowStep === 'frame_and_review';
-  const visibleQuestionBoxes = questionBoxes;
+  const visibleQuestionBoxes = useMemo(() => {
+    if (batchFillHiddenBoxIds.size === 0) return questionBoxes;
+    return questionBoxes.filter(box => !batchFillHiddenBoxIds.has(box.id));
+  }, [questionBoxes, batchFillHiddenBoxIds]);
   const isBoxRecognizing = (boxId: string) =>
     reviewHiddenBoxIds.has(boxId) && (isProcessing || batchProcessing || flowStage === 'recognizing');
   const getBoxStatusLabel = (box: QuestionBox) => {
@@ -2918,6 +2924,15 @@ export function UploadQuestionDialog({
           }
           // 步骤2：默认题干框，无需弹窗（type 已设为 question）
         }
+
+        // 批量补全题干模式：框选后自动识别并回填到第一个空子题
+        if (batchFillQuestionId !== null && workMode !== 'questions-only') {
+          setPendingAnswerTargetId(null);
+          setPendingLinkBoxId(null);
+          setShowAnswerLinkPicker(false);
+          setIsProcessing(true);
+          void processAnswerBoxes([newBox], undefined, batchFillQuestionId);
+        }
       }
     }
 
@@ -3136,13 +3151,14 @@ export function UploadQuestionDialog({
   };
 
   // 处理答案框：裁剪后调用答案提取 API，匹配到已有题目
-  const processAnswerBoxes = async (boxes: QuestionBox[], directTarget?: ManualLinkTarget | null) => {
+  const processAnswerBoxes = async (boxes: QuestionBox[], directTarget?: ManualLinkTarget | null, batchFillQuestionId?: number | null) => {
     setProcessingMessage(`正在裁剪 ${boxes.length} 个答案区域...`);
     const hasDirectTarget = directTarget != null;
+    const isBatchFill = batchFillQuestionId != null;
     const cleanupBoxId = boxes[0]?.id;
 
     setTimeout(() => {
-      if (hasDirectTarget) {
+      if (hasDirectTarget || isBatchFill) {
         setManualAnswerLinking(false);
         setManualLinkTarget(null);
         setManualLinkProcessingTarget(null);
@@ -3165,6 +3181,9 @@ export function UploadQuestionDialog({
         processingIds.add(directTarget.questionId);
         setAnswerProcessingForQuestionIds(processingIds);
       }
+    } else if (isBatchFill) {
+      // 批量补全：标记父题选项区加载态，不触发答案/解析区
+      setManualLinkProcessingTarget({ questionId: batchFillQuestionId!, field: 'options' });
     } else {
       // 批量处理：使用 answerProcessingForQuestionIds
       setAnswerProcessingForQuestionIds(processingIds);
@@ -3309,11 +3328,11 @@ export function UploadQuestionDialog({
             validQuestionTypes: getValidQuestionTypes(subjectInfo || ''),
           },
           subjectInfo,
-          answerMode: directTarget?.field === 'content' || directTarget?.field === 'options' ? undefined : true,
-          contentOnly: directTarget?.field === 'content' || directTarget?.field === 'options' ? true : undefined,
+          answerMode: directTarget ? (directTarget.field === 'content' || directTarget.field === 'options' ? undefined : true) : isBatchFill ? undefined : true,
+          contentOnly: directTarget ? (directTarget.field === 'content' || directTarget.field === 'options' ? true : undefined) : isBatchFill ? true : undefined,
           manualLink: directTarget != null,
           viewMode,
-          targetField: directTarget?.field,
+          targetField: directTarget?.field || (isBatchFill ? 'options' : undefined),
           // 传递已有题目，让后端能将提取的答案正确关联到对应题目（特别是子题结构）
           existingQuestions: questions.map(q => ({
             id: q.id,
@@ -3478,6 +3497,29 @@ export function UploadQuestionDialog({
                   setProcessingMessage(
                     isContentField ? '内容识别完成' : '答案提取完成'
                   );
+                } else if (isBatchFill && result.hasOptions !== undefined) {
+                  // 批量补全模式：找到第一个选项全空的子题 → 回填
+                  const batchResult = result as { hasOptions: boolean; options: Array<{ label: string; content: string }>; plainContent: string };
+                  const targetQ = questionsRef.current.find(q => q.id === batchFillQuestionId);
+                  if (targetQ) {
+                    const emptySub = findFirstEmptySubQuestion(targetQ);
+                    if (emptySub) {
+                      if (batchResult.hasOptions && batchResult.options.length > 0) {
+                        setQuestions(prev => prev.map(q => {
+                          if (q.id !== batchFillQuestionId) return q;
+                          return applyManualLinkOptionsToQuestion(q, emptySub.id, batchResult.options);
+                        }));
+                      } else if (batchResult.plainContent) {
+                        setQuestions(prev => prev.map(q => {
+                          if (q.id !== batchFillQuestionId) return q;
+                          return applyManualLinkTargetToQuestion(q, 'content', batchResult.plainContent, emptySub.id);
+                        }));
+                      }
+                      setProcessingMessage(`已填入第 ${(targetQ.subQuestions || []).indexOf(emptySub) + 1} 小题`);
+                    } else {
+                      setProcessingMessage('所有子题已完成');
+                    }
+                  }
                 } else if (result.preMatchedAnswers && (result.preMatchedAnswers as any[]).length > 0) {
                   const preMatched = result.preMatchedAnswers as Array<{
                     id: string; questionId: number; questionNumber: number;
@@ -5050,6 +5092,27 @@ export function UploadQuestionDialog({
     }));
   };
 
+  // 清空父题所有选项内容
+  const handleClearOptions = (questionId: number) => {
+    setQuestions(prev => prev.map(q => {
+      if (q.id !== questionId) return q;
+      return { ...q, optionContents: {} };
+    }));
+  };
+
+  // 清空子题所有选项内容
+  const handleClearSubOptions = (questionId: number, subId: number) => {
+    setQuestions(prev => prev.map(q => {
+      if (q.id !== questionId) return q;
+      return {
+        ...q,
+        subQuestions: (q.subQuestions || []).map(s =>
+          s.id === subId ? { ...s, optionContents: {} } : s
+        ),
+      };
+    }));
+  };
+
   // 删除子题新增选项（E及以后），将后续选项字母向前补位
   const handleDeleteSubOption = (questionId: number, subId: number, deleteLetter: string) => {
     const deleteIndex = OPTION_LETTERS.indexOf(deleteLetter);
@@ -5078,6 +5141,39 @@ export function UploadQuestionDialog({
         }),
       };
     }));
+  };
+
+  /** 找到第一个所有选项内容均为空的子题（用于批量补全题干） */
+  const findFirstEmptySubQuestion = (question: Question) => {
+    const subs = question.subQuestions || [];
+    for (let i = 0; i < subs.length; i++) {
+      const sub = subs[i];
+      if (!choiceQuestionTypes.includes(sub.questionType)) continue;
+      const contents = sub.optionContents || {};
+      const optionCount = sub.optionCount || 4;
+      const allEmpty = Array.from({ length: optionCount }, (_, idx) => OPTION_LETTERS[idx])
+        .every(letter => !contents[letter]?.trim());
+      if (allEmpty) return sub;
+    }
+    return null;
+  };
+
+  /** 切换批量补全题干开关 */
+  const toggleBatchFill = (questionId: number) => {
+    if (batchFillQuestionId === questionId) {
+      // 关闭：恢复所有隐藏框
+      setBatchFillQuestionId(null);
+      setBatchFillHiddenBoxIds(new Set());
+    } else {
+      // 开启：隐藏所有无 linkedQuestionId 的框
+      const hiddenIds = new Set(
+        questionBoxes
+          .filter(box => !box.linkedQuestionId)
+          .map(box => box.id)
+      );
+      setBatchFillQuestionId(questionId);
+      setBatchFillHiddenBoxIds(hiddenIds);
+    }
   };
 
   // 添加子题
@@ -7282,6 +7378,19 @@ export function UploadQuestionDialog({
                             />
                           </div>
                         )}
+                        {/* 批量补全题干开关（英语 + 完形填空） */}
+                        {viewMode === 'recognize' && subjectInfo?.includes('英语') && question.questionType === '完形填空' && (
+                          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-blue-50/60 rounded border border-blue-200">
+                            <Switch
+                              checked={batchFillQuestionId === question.id}
+                              onCheckedChange={() => toggleBatchFill(question.id)}
+                              className="scale-75"
+                            />
+                            <span className="text-xs text-gray-600">
+                              {batchFillQuestionId === question.id ? '批量补全中，框选内容将自动填入空子题' : '批量补全题干'}
+                            </span>
+                          </div>
+                        )}
                         {/* 父题选项区域 */}
                         {choiceQuestionTypes.includes(question.questionType) && (() => {
                           const isParentOptionsLoading =
@@ -7294,6 +7403,16 @@ export function UploadQuestionDialog({
                               <div className="flex items-center gap-1">
                                 <span className="text-[11px] text-gray-500">选项</span>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'options'); }} disabled={isProcessing} className="p-0.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" title="框选内容并填入选项"><Link2Icon className="w-3 h-3" /></button>
+                                {viewMode === 'recognize' && Object.values(question.optionContents || {}).some(v => v?.trim()) && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleClearOptions(question.id); }}
+                                    className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-0.5 transition-colors"
+                                    title="清空选项"
+                                  >
+                                    <Trash2 className="w-3 h-3" /> 清空
+                                  </button>
+                                )}
                               </div>
                               <div className="flex items-center gap-1">
                                 <button type="button" onClick={() => handleUpdateOptionCount(question.id, Math.max(2, (question.optionCount || 4) - 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">-</button>
@@ -7568,6 +7687,16 @@ export function UploadQuestionDialog({
                                       <div className="flex items-center gap-1">
                                         <span className="text-[11px] text-gray-500">选项</span>
                                         <button type="button" onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'options', sub.id); }} disabled={isProcessing || isSubQuestionAnswerProcessing(question.id, sub.id)} className="p-0.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" title="框选内容并填入该子题选项"><Link2Icon className="w-3 h-3" /></button>
+                                        {viewMode === 'recognize' && Object.values(sub.optionContents || {}).some(v => v?.trim()) && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); handleClearSubOptions(question.id, sub.id); }}
+                                            className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-0.5 transition-colors"
+                                            title="清空选项"
+                                          >
+                                            <Trash2 className="w-3 h-3" /> 清空
+                                          </button>
+                                        )}
                                       </div>
                                       <div className="flex items-center gap-1">
                                         <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, Math.max(2, (sub.optionCount || 4) - 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">-</button>
@@ -7608,7 +7737,7 @@ export function UploadQuestionDialog({
                                       )}
                                   </div>
                                 )}
-                                <div className="space-y-2">
+                                <div className="space-y-2" style={viewMode === 'image' && choiceQuestionTypes.includes(sub.questionType) ? { display: 'none' } : undefined}>
                                   {answerProcessingForQuestionIds.has(question.id) ? (
                                     <div className="relative">
                                       <input

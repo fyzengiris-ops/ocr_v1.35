@@ -7446,8 +7446,11 @@ export function UploadQuestionDialog({
                                 <div className="flex flex-wrap gap-2">
                                   {Array.from({ length: question.optionCount || 4 }, (_, i) => {
                                     const letter = OPTION_LETTERS[i];
-                                    const isSelected = question.answer === letter;
                                     const label = question.questionType === '判断题' ? (question.optionContents?.[letter] || letter) : (question.optionContents?.[letter] || letter);
+                                    if (workMode === 'questions-only') {
+                                      return (<span key={letter} className="px-3 py-1.5 rounded border text-sm font-medium bg-white text-gray-600 border-gray-300">{label}</span>);
+                                    }
+                                    const isSelected = question.answer === letter;
                                     return (<button key={letter} type="button" onClick={(e) => { e.stopPropagation(); handleUpdateAnswer(question.id, isSelected ? '' : letter); }} disabled={isProcessing} className={cn("px-3 py-1.5 rounded border text-sm font-medium transition-colors", isSelected ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-300 hover:border-emerald-300 hover:text-emerald-600", isProcessing && "opacity-50 cursor-not-allowed")}>{label}</button>);
                                   })}
                                 </div>
@@ -7653,7 +7656,7 @@ export function UploadQuestionDialog({
                         )}
 
                         {/* 复合题：子题答案区（仅当有子题时显示；一步识别模式不显示） */}
-                        {workMode !== 'questions-only' && compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0 && (
+                        {compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0 && (
                           <div className="relative border-t pt-2 mt-1">
                             <div
                               data-req-anchor={!firstQuestionWithParentAnswerClearId && question.id === firstQuestionWithSubAnswerClearId ? 'review-step-answer-clear' : undefined}
@@ -7725,8 +7728,11 @@ export function UploadQuestionDialog({
                                         <div className="flex flex-wrap gap-2">
                                           {Array.from({ length: sub.optionCount || 4 }, (_, i) => {
                                             const letter = OPTION_LETTERS[i];
-                                            const isSelected = sub.answer === letter;
                                             const label = sub.questionType === '判断题' ? (sub.optionContents?.[letter] || letter) : (sub.optionContents?.[letter] || letter);
+                                            if (workMode === 'questions-only') {
+                                              return (<span key={letter} className="px-3 py-1.5 rounded border text-sm font-medium bg-white text-gray-600 border-gray-300">{label}</span>);
+                                            }
+                                            const isSelected = sub.answer === letter;
                                             return (
                                               <button key={letter} type="button"
                                                 onClick={(e) => { e.stopPropagation(); handleUpdateSubAnswer(question.id, sub.id, isSelected ? '' : letter); }}
@@ -7753,7 +7759,7 @@ export function UploadQuestionDialog({
                                       )}
                                   </div>
                                 )}
-                                <div className="space-y-2" style={viewMode === 'image' && choiceQuestionTypes.includes(sub.questionType) ? { display: 'none' } : undefined}>
+                                <div className="space-y-2" style={workMode === 'questions-only' ? { display: 'none' } : viewMode === 'image' && choiceQuestionTypes.includes(sub.questionType) ? { display: 'none' } : undefined}>
                                   {answerProcessingForQuestionIds.has(question.id) ? (
                                     <div className="relative">
                                       <input
@@ -7852,7 +7858,7 @@ export function UploadQuestionDialog({
                                       </div>
                                     </div>
                                   )}
-                                  <div>
+                                  <div style={workMode === 'questions-only' ? { display: 'none' } : undefined}>
                                     <div className="flex items-center justify-between mb-0.5">
                                       <div className="flex items-center gap-1">
                                         <label className="text-xs text-gray-500">解析</label>
@@ -7923,7 +7929,7 @@ export function UploadQuestionDialog({
                           </div>
                         )}
                         {/* 复合题无子题时：在解析区下方显示添加子题入口 */}
-                        {workMode !== 'questions-only' && compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length === 0 && (
+                        {compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length === 0 && (
                           <div className="pt-2 mt-1">
                             <button
                               onClick={() => handleAddSubQuestion(question.id)}

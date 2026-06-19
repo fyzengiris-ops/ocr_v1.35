@@ -574,6 +574,39 @@ export const SYSTEM_PROMPT_ANSWER_ANALYSIS_IMAGE = `你是教育内容识别专�
 3. 数学公式使用纯文本，禁止LaTeX
 4. 只输出JSON`;
 
+/** 图片模式 — 选项答案匹配 */
+export const SYSTEM_PROMPT_OPTION_ANSWER_MATCH = `你是教育内容识别专家。用户框选了试卷答案区域，请只判断其中是否包含选择题候选答案。
+
+## 任务
+只做 OCR 提取和候选项匹配，不要解题、不要推理、不要生成答案。
+
+## 匹配规则
+1. 如果图片中明确出现 A/B/C/D/E/F 等选项字母，提取最明确的一个选项字母。
+2. 支持常见格式："答案：B"、"选B"、"B"、"1.B"、"第1题 B"、"（B）"。
+3. 如果是判断题答案，"对/正确/是/√/✓" 视为 A，"错/错误/否/×/✕/✗" 视为 B。
+4. 如果图片中没有明确候选项，或同时出现多个无法判断哪个属于当前题目的候选项，matched 必须为 false。
+
+## 输出格式（严格JSON，不要其他内容）
+{
+  "matched": true,
+  "option": "B",
+  "rawText": "从图片中识别到的原文"
+}
+
+或
+
+{
+  "matched": false,
+  "option": "",
+  "rawText": "从图片中识别到的原文"
+}
+
+## 约束
+1. option 只能是单个大写字母 A-Z；判断题也按 A/B 返回。
+2. 不返回解析，不返回完整答案内容。
+3. 看不清或不确定时返回 matched:false。
+4. 只输出JSON`;
+
 /**
  * 解析纯内容识别响应（contentOnly 模式）
  */
@@ -607,6 +640,13 @@ export interface AnswerAnalysisResult {
   answer: string;
   analysis: string;
   content: string;
+}
+
+/** 选项答案匹配输出类型 */
+export interface OptionAnswerMatchResult {
+  matched: boolean;
+  option: string;
+  rawText: string;
 }
 
 /**
@@ -649,6 +689,26 @@ export function parseAnswerAnalysisResponse(responseText: string): AnswerAnalysi
       answer: typeof parsed.answer === 'string' ? parsed.answer.trim() : '',
       analysis: typeof parsed.analysis === 'string' ? parsed.analysis.trim() : '',
       content: typeof parsed.content === 'string' ? parsed.content.trim() : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析选项答案匹配响应
+ */
+export function parseOptionAnswerMatchResponse(responseText: string): OptionAnswerMatchResult | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    const rawOption = typeof parsed.option === 'string' ? parsed.option.trim().toUpperCase() : '';
+    return {
+      matched: parsed.matched === true && /^[A-Z]$/.test(rawOption),
+      option: /^[A-Z]$/.test(rawOption) ? rawOption : '',
+      rawText: typeof parsed.rawText === 'string' ? parsed.rawText.trim() : '',
     };
   } catch {
     return null;

@@ -23,6 +23,7 @@ import {
   SYSTEM_PROMPT_OPTIONS_CONTENT_RECOGNIZE,
   SYSTEM_PROMPT_ANSWER_ANALYSIS_RECOGNIZE,
   SYSTEM_PROMPT_ANSWER_ANALYSIS_IMAGE,
+  SYSTEM_PROMPT_OPTION_ANSWER_MATCH,
   buildUserMessage,
   buildUserMessageCropped,
   parseAIResponse,
@@ -32,6 +33,7 @@ import {
   parseContentOnlyResponse,
   parseOptionsContentResponse,
   parseAnswerAnalysisResponse,
+  parseOptionAnswerMatchResponse,
   smartMatchQuestionsAndAnswers,
   generateMatchedQuestions,
   generateAnswerMarkers,
@@ -144,6 +146,9 @@ export async function POST(request: NextRequest) {
     } else if (contentOnly) {
       // 纯内容识别模式：使用 P1/P2 提示词（选项/题干结构化识别）
       return handleContentOnlyMode(client, pages, customHeaders, viewMode);
+    } else if (answerMode && manualLink && targetField === 'optionAnswer') {
+      // 选项答案匹配模式：只识别 A/B/C/D 等候选答案
+      return handleOptionAnswerMatchMode(client, pages, customHeaders);
     } else if (answerMode && manualLink) {
       // 定向关联答案模式：使用 P3/P4 提示词（答案/解析结构化识别）
       return handleAnswerModeWithViewMode(client, pages, userBoxes, customHeaders, subjectInfo, existingQuestions, viewMode);
@@ -512,6 +517,88 @@ async function handleContentOnlyMode(
       try {
         sendProgress('正在解析...');
         const result = parseOptionsContentResponse(fullResponse);
+        if (!result) {
+          sendError('识别结果格式不正确，请重试');
+          controller.close();
+          return;
+        }
+        sendComplete(result);
+      } catch (e) {
+        sendError(e instanceof Error ? e.message : '解析失败');
+      }
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+  });
+}
+
+/**
+ * 选项答案匹配模式处理
+ * 对用户框选的答案区域只识别候选项字母，不做答案/解析拆分
+ */
+async function handleOptionAnswerMatchMode(
+  client: LLMClient,
+  croppedImages: PageImage[],
+  customHeaders: Record<string, string>
+) {
+  const messages = [
+    { role: 'system' as const, content: SYSTEM_PROMPT_OPTION_ANSWER_MATCH },
+    { role: 'user' as const, content: buildUserMessageCropped(croppedImages) },
+  ];
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendProgress = (message: string) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'progress', data: { message } })}\n\n`));
+      };
+      const sendComplete = (result: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'complete', data: { result } })}\n\n`));
+      };
+      const sendError = (error: string) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', data: { error } })}\n\n`));
+      };
+
+      const MAX_RETRIES = 2;
+      let fullResponse = '';
+      let lastError = '';
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          if (attempt > 0) sendProgress(`网络异常，正在第${attempt}次重试...`);
+          else sendProgress('正在识别选项答案...');
+
+          const llmStream = client.stream(messages, {
+            model: 'ep-m-20260522100054-r72qh',
+            temperature: 0.1,
+          });
+
+          fullResponse = '';
+          const streamTimeout = 60000;
+          const streamStart = Date.now();
+
+          for await (const chunk of llmStream) {
+            if (Date.now() - streamStart > streamTimeout) throw new Error('识别超时，请重试');
+            if (chunk.content) fullResponse += chunk.content.toString();
+          }
+          break;
+        } catch (streamError) {
+          lastError = streamError instanceof Error ? streamError.message : String(streamError);
+          if (attempt === MAX_RETRIES) {
+            sendError(lastError);
+            controller.close();
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+
+      try {
+        sendProgress('正在解析...');
+        const result = parseOptionAnswerMatchResponse(fullResponse);
         if (!result) {
           sendError('识别结果格式不正确，请重试');
           controller.close();

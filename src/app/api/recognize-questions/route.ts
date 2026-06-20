@@ -742,7 +742,12 @@ async function handleGlobalMatchMode(
   // 构建完整题目信息（提供完整内容，不截断，方便 AI 做语义匹配）
   const questionsDetail = unmatchedQuestions.map((q) => {
     const questionLabel = Number.isFinite(q.number) && q.number > 0 ? `第${q.number}题` : '第 ? 题';
-    return `【${questionLabel}】ID:${q.id} 类型:${q.questionType}\n题目内容:${q.content}`;
+    const subQuestionDesc = q.subQuestions && q.subQuestions.length > 0
+      ? `\n子题数量:${q.subQuestions.length}\n子题信息:\n${q.subQuestions.map((sq, idx) =>
+          `  ${idx + 1}. 类型:${sq.questionType || '未知'} 内容:${sq.content || ''}`
+        ).join('\n')}`
+      : '';
+    return `【${questionLabel}】ID:${q.id} 类型:${q.questionType}\n题目内容:${q.content}${subQuestionDesc}`;
   }).join('\n\n---\n\n');
 
   // 构建带页码标注的图片列表说明
@@ -776,8 +781,8 @@ ${questionsDetail}
 2. 语义验证：答案内容必须与题目类型一致
 3. 跨页关联：检查所有页面寻找答案
 4. 找不到就留空：如果在所有页面中都找不到某题的答案/解析，answer和analysis都填 ""
-5. 大题答案解析不做子题结构化拆分；如果图片答案/解析区域出现 "（1）"、"(1)"、"1."、"1、"、"①" 等子题标号，请保留在父级 answer / analysis 原文中
-6. 如果同一题同时包含答案和解析，仍需要拆分到父级 answer 和 analysis；subQuestions 返回空数组
+5. 复合题/大题答案解析必须保留子题标号；如果图片答案/解析区域出现 "（1）"、"(1)"、"1."、"1、"、"①" 等子题标号，请把这些标号和对应原文保留在父级 answer / analysis 中，前端会据此自动拆分到子题
+6. 如果同一题同时包含答案和解析，优先按图片原文中的“答案/解析”标识拆分到父级 answer 和 analysis；如果答案和解析在同一段里混排、无法可靠拆开，也要完整保留混排原文，不能删掉子题标号、答案标识或解析标识；subQuestions 返回空数组
 
 ## 输出格式（严格 JSON 数组）：
 [
@@ -794,7 +799,7 @@ ${questionsDetail}
 注意：
 - questionId 必须使用输入中的原始 id 数字
 - found=false 时，answer 和 analysis 必须都是空字符串 ""
-- 不做子题级答案解析拆分，subQuestions 固定返回空数组；子题标号和内容保留在父级 answer / analysis 原文中
+- subQuestions 固定返回空数组；子题标号、答案标识和解析标识必须保留在父级 answer / analysis 原文中，供前端自动拆分回填
 - 只输出没有答案的题目的匹配结果
 - 如果整页都没有任何可识别的答案，返回空数组 []`;
 
@@ -952,8 +957,10 @@ ${questionsDetail}
             console.log(`[全局匹配] 第${m.questionNumber || m.questionId}题: AI标记未找到答案，跳过`);
             return false;
           }
-          // 答案为空也跳过（没有找到有效答案）
-          if (!m.answer || typeof m.answer !== 'string' || m.answer.trim().length === 0) return false;
+          // 答案和解析都为空才跳过；有些大题会把“答案+解析”整段识别到 analysis 里，前端会继续拆分
+          const answerText = typeof m.answer === 'string' ? m.answer.trim() : '';
+          const analysisText = typeof m.analysis === 'string' ? m.analysis.trim() : '';
+          if (!answerText && !analysisText) return false;
           return true;
         }).map((m: any) => ({
           questionId: m.questionId,

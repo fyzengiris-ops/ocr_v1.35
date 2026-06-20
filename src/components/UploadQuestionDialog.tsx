@@ -785,11 +785,24 @@ function splitAnswerBySubQuestions(text: string, subCount: number): string[] | n
   return null;
 }
 
+function hasAnswerOrAnalysisLabel(content: string): boolean {
+  return /(?:参考)?答案\s*[：:]?/.test(content) || /解析\s*[：:]?/.test(content);
+}
+
+function trimSubQuestionSegment(content: string): string {
+  return content
+    .trim()
+    .replace(/^\s*(?:[①②③④⑤⑥⑦⑧⑨⑩]|[（(]\s*\d+\s*[）)]|\d+\s*[.．、，,])\s*/, '')
+    .replace(/^[：:，,、；;\s]+|[：:，,、；;\s]+$/g, '')
+    .trim();
+}
+
 /**
  * 从子题内容中尝试分离答案和解析
  * 支持的格式：
  * - "答案：xxx 解析：yyy" → answer=xxx, analysis=yyy
  * - "答案:xxx" → answer=xxx, analysis=''
+ * - "xxx 解析：yyy" → answer=xxx, analysis=yyy
  * - "解析：yyy" → answer='', analysis=yyy
  * - 无明显标记时，尝试从 "所以/得/即/则/故" 等关键词前提取答案
  * - 无法分离时，全部放入 analysis
@@ -797,34 +810,38 @@ function splitAnswerBySubQuestions(text: string, subCount: number): string[] | n
 function parseSubQuestionContent(content: string): { answer: string; analysis: string } {
   if (!content || !content.trim()) return { answer: '', analysis: '' };
 
-  const trimmed = content.trim();
+  const trimmed = trimSubQuestionSegment(content);
+  const answerLabel = /(?:参考)?答案\s*[：:]?/;
+  const analysisLabel = /解析\s*[：:]?/;
+  const answerMatch = answerLabel.exec(trimmed);
+  const analysisMatch = analysisLabel.exec(trimmed);
 
-  // 模式1: "答案：xxx 解析：yyy" 或 "答案:xxx 解析:yyy"
-  const answerAnalysisPattern = /答案\s*[：:]\s*([\s\S]+?)\s*解析\s*[：:]\s*([\s\S]+)$/;
-  const match1 = trimmed.match(answerAnalysisPattern);
-  if (match1) {
-    return { answer: match1[1].trim(), analysis: match1[2].trim() };
+  if (answerMatch && analysisMatch) {
+    if (answerMatch.index <= analysisMatch.index) {
+      return {
+        answer: trimSubQuestionSegment(trimmed.slice(answerMatch.index + answerMatch[0].length, analysisMatch.index)),
+        analysis: trimSubQuestionSegment(trimmed.slice(analysisMatch.index + analysisMatch[0].length)),
+      };
+    }
+
+    return {
+      answer: trimSubQuestionSegment(trimmed.slice(answerMatch.index + answerMatch[0].length)),
+      analysis: trimSubQuestionSegment(trimmed.slice(analysisMatch.index + analysisMatch[0].length, answerMatch.index)),
+    };
   }
 
-  // 模式2: "解析：yyy 答案：xxx" (答案在后面)
-  const analysisAnswerPattern = /解析\s*[：:]\s*([\s\S]+?)\s*答案\s*[：:]\s*([\s\S]+)$/;
-  const match2 = trimmed.match(analysisAnswerPattern);
-  if (match2) {
-    return { answer: match2[2].trim(), analysis: match2[1].trim() };
+  if (answerMatch) {
+    return {
+      answer: trimSubQuestionSegment(trimmed.slice(answerMatch.index + answerMatch[0].length)),
+      analysis: '',
+    };
   }
 
-  // 模式3: "答案：xxx" (无解析)
-  const answerOnlyPattern = /答案\s*[：:]\s*([\s\S]+)$/;
-  const match3 = trimmed.match(answerOnlyPattern);
-  if (match3) {
-    return { answer: match3[1].trim(), analysis: '' };
-  }
-
-  // 模式4: "解析：yyy" (无答案)
-  const analysisOnlyPattern = /解析\s*[：:]\s*([\s\S]+)$/;
-  const match4 = trimmed.match(analysisOnlyPattern);
-  if (match4) {
-    return { answer: '', analysis: match4[1].trim() };
+  if (analysisMatch) {
+    return {
+      answer: trimSubQuestionSegment(trimmed.slice(0, analysisMatch.index)),
+      analysis: trimSubQuestionSegment(trimmed.slice(analysisMatch.index + analysisMatch[0].length)),
+    };
   }
 
   // 模式5: 尝试从 "所以/得/即/则/故" 等关键词分离
@@ -1121,22 +1138,30 @@ function mergeAnswerToQuestion(
     let answerParts = splitAnswerBySubQuestions(ansStr, subCount);
     let analysisParts = splitAnswerBySubQuestions(anaStr, subCount);
 
-    // 当 answer 为空但 analysis 包含带子题序号的完整内容时，
-    // 从 analysis 剥离的各部分中进一步尝试分离答案和解析
-    const shouldParseSubContent = !answerParts && analysisParts && !ansStr;
-
     const updatedSubQuestions = q.subQuestions!.map((s, idx) => {
-      let subAnswer = answerParts ? mergeAnswer(s.answer, answerParts[idx] || '') : s.answer;
-      let subAnalysis = analysisParts ? mergeAnalysis(s.analysis, analysisParts[idx] || '') : s.analysis;
+      let subAnswer = s.answer;
+      let subAnalysis = s.analysis;
+      const answerSegment = answerParts?.[idx] || '';
+      const analysisSegment = analysisParts?.[idx] || '';
 
-      // 如果 answer 为空但 analysis 按子题拆分成功，
-      // 尝试从每个子题的 analysis 内容中进一步分离答案和解析
-      if (shouldParseSubContent && subAnalysis) {
-        const parsed = parseSubQuestionContent(subAnalysis);
-        if (parsed.answer) {
+      if (answerSegment) {
+        if (hasAnswerOrAnalysisLabel(answerSegment)) {
+          const parsed = parseSubQuestionContent(answerSegment);
           subAnswer = mergeAnswer(subAnswer, parsed.answer);
+          subAnalysis = mergeAnalysis(subAnalysis, parsed.analysis);
+        } else {
+          subAnswer = mergeAnswer(subAnswer, answerSegment);
         }
-        subAnalysis = mergeAnalysis(subAnalysis, parsed.analysis);
+      }
+
+      if (analysisSegment) {
+        if (hasAnswerOrAnalysisLabel(analysisSegment)) {
+          const parsed = parseSubQuestionContent(analysisSegment);
+          subAnswer = mergeAnswer(subAnswer, parsed.answer);
+          subAnalysis = mergeAnalysis(subAnalysis, parsed.analysis);
+        } else {
+          subAnalysis = mergeAnalysis(subAnalysis, analysisSegment);
+        }
       }
 
       const updated = { ...s, answer: subAnswer, analysis: subAnalysis };
@@ -1846,7 +1871,6 @@ export function UploadQuestionDialog({
   const [drawStart, setDrawStart] = useState<{ x: number; y: number; pageNumber: number } | null>(null);
   const [currentBox, setCurrentBox] = useState<Partial<QuestionBox> | null>(null);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
-  const [activeReviewBoxId, setActiveReviewBoxId] = useState<string | null>(null);
   const [hoveredReviewBoxId, setHoveredReviewBoxId] = useState<string | null>(null);
   const [reviewBoxChangePending, setReviewBoxChangePending] = useState(false);
   const [reviewBoxChangeSnapshot, setReviewBoxChangeSnapshot] = useState<{
@@ -2832,6 +2856,57 @@ export function UploadQuestionDialog({
     };
   }, [questions]);
 
+  const blankMismatchItems = useMemo(() => {
+    if (workMode === 'questions-only' || viewMode !== 'recognize') return [];
+    const items: Array<{
+      questionId: number;
+      subQuestionId?: number;
+      order: number;
+      inlineBlankCount: number;
+      answerBlankCount: number;
+    }> = [];
+
+    questions.forEach((question, questionIndex) => {
+      if (isFillBlankType(question.questionType)) {
+        const inlineBlankCount = getInlineBlankCount(question.content || '');
+        const answerBlankCount = Math.max(1, question.blankCount || 1);
+        if (inlineBlankCount !== answerBlankCount) {
+          items.push({ questionId: question.id, order: questionIndex, inlineBlankCount, answerBlankCount });
+        }
+      }
+
+      (question.subQuestions || []).forEach((subQuestion, subIndex) => {
+        if (!isFillBlankType(subQuestion.questionType)) return;
+        const inlineBlankCount = getInlineBlankCount(subQuestion.content || '');
+        const answerBlankCount = Math.max(1, subQuestion.blankCount || 1);
+        if (inlineBlankCount !== answerBlankCount) {
+          items.push({
+            questionId: question.id,
+            subQuestionId: subQuestion.id,
+            order: questionIndex + (subIndex + 1) / 100,
+            inlineBlankCount,
+            answerBlankCount,
+          });
+        }
+      });
+    });
+
+    return items;
+  }, [questions, workMode, viewMode]);
+
+  const firstAddToPaperIssueQuestionId = useMemo(() => {
+    const candidates: Array<{ questionId: number; order: number }> = [];
+    if (reviewStats.firstIncompleteQuestionId) {
+      const index = questions.findIndex(question => question.id === reviewStats.firstIncompleteQuestionId);
+      candidates.push({ questionId: reviewStats.firstIncompleteQuestionId, order: index >= 0 ? index : Number.MAX_SAFE_INTEGER });
+    }
+    if (blankMismatchItems.length > 0) {
+      candidates.push({ questionId: blankMismatchItems[0].questionId, order: blankMismatchItems[0].order });
+    }
+    candidates.sort((a, b) => a.order - b.order);
+    return candidates[0]?.questionId ?? null;
+  }, [blankMismatchItems, questions, reviewStats.firstIncompleteQuestionId]);
+
   // 模式三（跨文件）：题目文件页在前，答案文件页在后
   const pageOrder = useMemo(() => {
     const order = pageImages.map((_, i) => i);
@@ -3299,6 +3374,7 @@ export function UploadQuestionDialog({
       return next;
     });
     if (selectedBoxId && boxIds.has(selectedBoxId)) setSelectedBoxId(null);
+    if (hoveredReviewBoxId && boxIds.has(hoveredReviewBoxId)) setHoveredReviewBoxId(null);
   };
 
   const getQuestionIdsLinkedToBox = (boxId: string) => {
@@ -4882,6 +4958,13 @@ export function UploadQuestionDialog({
             content: q.content,
             questionType: q.questionType,
             hasAnswer: hasUsableAnswer(q),
+            subQuestions: (q.subQuestions || []).map((s, idx) => ({
+              id: s.id,
+              number: idx + 1,
+              content: s.content,
+              questionType: s.questionType,
+              hasAnswer: hasUsableAnswer(s),
+            })),
           })),
         }),
       });
@@ -5972,13 +6055,51 @@ export function UploadQuestionDialog({
     }, 3000);
   };
 
+  const scrollToQuestionCard = (questionId: number, shouldHighlight = true) => {
+    if (shouldHighlight) {
+      setHighlightedQuestionId(questionId);
+    }
+
+    requestAnimationFrame(() => {
+      const questionElement = document.getElementById(`question-card-${questionId}`);
+      if (questionElement) {
+        questionElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+
+    if (shouldHighlight) {
+      setTimeout(() => {
+        setHighlightedQuestionId(null);
+      }, 3000);
+    }
+  };
+
+  const getReviewBoxIdForQuestion = (question: Question) => {
+    const directBoxId = question.boxId ?? question.box?.id;
+    if (directBoxId && questionBoxes.some(box => box.id === directBoxId)) return directBoxId;
+
+    const questionBox = questionBoxes.find(box => box.type !== 'answer' && getQuestionResultForBox(box)?.id === question.id);
+    if (questionBox) return questionBox.id;
+
+    const fallbackBox = questionBoxes.find(box => getQuestionResultForBox(box)?.id === question.id);
+    return fallbackBox?.id ?? directBoxId ?? null;
+  };
+
+  const handleReviewBoxLocateQuestion = (box: QuestionBox) => {
+    if (!isReviewStep) return;
+    const targetQuestion = getQuestionResultForBox(box);
+    if (!targetQuestion) return;
+    scrollToQuestionCard(targetQuestion.id, false);
+  };
+
   // 点击右侧题号定位到左侧切图区的对应框
   const handleLocateBoxByQuestion = (question: Question) => {
     const sourceBoxId = question.boxId ?? question.box?.id;
-    if (!sourceBoxId || !containerRef.current) return;
+    const reviewBoxId = getReviewBoxIdForQuestion(question) ?? sourceBoxId;
+    if (!reviewBoxId || !containerRef.current) return;
 
     // 找到对应的框
-    const targetBox = questionBoxes.find(b => b.id === sourceBoxId) ?? question.box;
+    const targetBox = questionBoxes.find(b => b.id === reviewBoxId) ?? question.box;
     if (!targetBox) return;
 
     // 找到框所在的页面并滚动
@@ -5991,11 +6112,7 @@ export function UploadQuestionDialog({
     setTimeout(() => {
       const boxEl = containerRef.current?.querySelector(`[data-box-id="${targetBox.id}"]`) as HTMLElement;
       if (boxEl) {
-        boxEl.classList.add('ring-4', 'ring-blue-400', 'ring-offset-2', 'ring-offset-white', 'z-50');
         boxEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-        setTimeout(() => {
-          boxEl.classList.remove('ring-4', 'ring-blue-400', 'ring-offset-2', 'ring-offset-white', 'z-50');
-        }, 3000);
       }
     }, 300);
   };
@@ -6026,26 +6143,9 @@ export function UploadQuestionDialog({
       console.log('[题号定位] 未找到对应题目, 所有题目:', currentQuestions.map(q => ({ id: q.id, number: q.number, boxId: q.boxId })));
       return;
     }
-    
-    // 高亮目标题目
-    setHighlightedQuestionId(targetQuestion.id);
-    
-    // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
-    requestAnimationFrame(() => {
-      const questionElement = document.getElementById(`question-card-${targetQuestion!.id}`);
-      if (questionElement) {
-        // 使用 scrollIntoView 确保可靠滚动定位
-        questionElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        console.log('[题号定位] 滚动到题目卡片:', `question-card-${targetQuestion!.id}`);
-      } else {
-        console.log('[题号定位] 未找到DOM元素:', `question-card-${targetQuestion!.id}`);
-      }
-    });
-    
-    // 3秒后取消高亮
-    setTimeout(() => {
-      setHighlightedQuestionId(null);
-    }, 3000);
+
+    scrollToQuestionCard(targetQuestion.id, false);
+    console.log('[题号定位] 滚动到题目卡片:', `question-card-${targetQuestion.id}`);
   };
 
   // 关联答案
@@ -6061,7 +6161,7 @@ export function UploadQuestionDialog({
   // 加入试卷
   const handleAddToPaper = () => {
     if (questions.length === 0) return;
-    if (workMode !== 'questions-only' && reviewStats.incompleteItemCount > 0) {
+    if (workMode !== 'questions-only' && (reviewStats.incompleteItemCount > 0 || blankMismatchItems.length > 0)) {
       setShowAddToPaperConfirm(true);
       return;
     }
@@ -6120,6 +6220,9 @@ export function UploadQuestionDialog({
       sessionStorage.setItem('paperEditData', JSON.stringify(paperData));
     } catch (e) {
       console.error('[handleAddToPaper] sessionStorage 写入失败:', e);
+      setToastMessage('加入试卷失败，题目数据暂未保存，请重试');
+      setTimeout(() => setToastMessage(''), 3000);
+      return;
     }
     onAddToPaper(questions);
   };
@@ -6735,16 +6838,24 @@ export function UploadQuestionDialog({
                 <AlertDialogContent className="max-w-sm">
                   <AlertDialogHeader>
                     <AlertDialogTitle>确认加入试卷吗？</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      当前还有{reviewStats.incompleteItemCount}道题的答案/解析没有补充，您可以在后续组卷页面使用AI批量补充功能，进行补充。
+                    <AlertDialogDescription className="space-y-1">
+                      {reviewStats.incompleteItemCount > 0 && (
+                        <span className="block">
+                          当前还有{reviewStats.incompleteItemCount}道题的答案/解析没有补充，您可以在后续组卷页面使用AI批量补充功能，进行补充。
+                        </span>
+                      )}
+                      {blankMismatchItems.length > 0 && (
+                        <span className="block">
+                          另有{blankMismatchItems.length}道填空题的答案空位与题干空位不匹配。
+                        </span>
+                      )}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel onClick={() => {
                       setShowAddToPaperConfirm(false);
-                      if (reviewStats.firstIncompleteQuestionId) {
-                        const firstEl = document.querySelector(`[data-question-id="${reviewStats.firstIncompleteQuestionId}"]`) as HTMLElement | null;
-                        firstEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      if (firstAddToPaperIssueQuestionId) {
+                        scrollToQuestionCard(firstAddToPaperIssueQuestionId);
                       }
                     }}>取消</AlertDialogCancel>
                     <AlertDialogAction
@@ -7003,6 +7114,7 @@ export function UploadQuestionDialog({
                       const questionNumberLabel = getBoxQuestionNumberLabel(box);
                       const linkedQuestionForBox = getQuestionResultForBox(box);
                       const showQuestionNumberLabel = isReviewStep && !isRecognizingBox && !!linkedQuestionForBox && getBoxDisplayQuestionNumber(box) !== null;
+                      const isReviewLinkedHighlighted = isReviewStep && !!linkedQuestionForBox && hoveredReviewBoxId === box.id;
                       return (
                       <div
                         key={`${box.id}-${pageNum}`}
@@ -7010,8 +7122,20 @@ export function UploadQuestionDialog({
                         className={cn(
                           "question-box absolute transition-colors",
                           getBoxBorderClassName(box),
-                          (isRecognizingBox || isMoveLockedBox) && "cursor-not-allowed"
+                          (isRecognizingBox || isMoveLockedBox) && "cursor-not-allowed",
+                          isReviewLinkedHighlighted && "ring-2 ring-indigo-500 ring-offset-2 ring-offset-white shadow-lg shadow-indigo-200 z-30"
                         )}
+                        onClick={(e) => {
+                          const target = e.target as HTMLElement;
+                          if (target.closest('button,.resize-handle')) return;
+                          handleReviewBoxLocateQuestion(box);
+                        }}
+                        onMouseEnter={() => {
+                          if (isReviewStep && linkedQuestionForBox) setHoveredReviewBoxId(box.id);
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredReviewBoxId(prev => (prev === box.id ? null : prev));
+                        }}
                         style={{
                           left: renderStyle.left,
                           top: renderStyle.top,
@@ -7136,6 +7260,7 @@ export function UploadQuestionDialog({
                       const answerQuestionNumberLabel = getAnswerBoxQuestionNumberLabel(box);
                       const linkedQuestionForBox = getQuestionResultForBox(box);
                       const showQuestionNumberLabel = isReviewStep && !isRecognizingBox && !!linkedQuestionForBox && getBoxDisplayQuestionNumber(box) !== null;
+                      const isReviewLinkedHighlighted = isReviewStep && !!linkedQuestionForBox && hoveredReviewBoxId === box.id;
                       
                       // 已识别的框：支持移动/调整大小 + 点击题号标签定位
                       if (isRecognized) {
@@ -7144,9 +7269,21 @@ export function UploadQuestionDialog({
                             key={`${box.id}-${pageNum}`}
                             data-box-id={box.id}
                             className={cn(
-                              "recognized-box group absolute cursor-pointer hover:ring-2 hover:ring-emerald-400",
-                              "border-emerald-500 bg-emerald-100/30"
+                              "recognized-box group absolute cursor-pointer hover:ring-2 hover:ring-indigo-500",
+                              "border-emerald-500 bg-emerald-100/30",
+                              isReviewLinkedHighlighted && "ring-2 ring-indigo-500 ring-offset-2 ring-offset-white shadow-lg shadow-indigo-200 z-30"
                             )}
+                            onClick={(e) => {
+                              const target = e.target as HTMLElement;
+                              if (target.closest('button,.resize-handle')) return;
+                              handleReviewBoxLocateQuestion(box);
+                            }}
+                            onMouseEnter={() => {
+                              if (isReviewStep && linkedQuestionForBox) setHoveredReviewBoxId(box.id);
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredReviewBoxId(prev => (prev === box.id ? null : prev));
+                            }}
                             style={{
                               left: renderStyle.left,
                               top: renderStyle.top,
@@ -7255,8 +7392,20 @@ export function UploadQuestionDialog({
                           className={cn(
                             "question-box absolute transition-colors",
                             getBoxBorderClassName(box),
-                            (isRecognizingBox || isMoveLockedBox) && "cursor-not-allowed"
+                            (isRecognizingBox || isMoveLockedBox) && "cursor-not-allowed",
+                            isReviewLinkedHighlighted && "ring-2 ring-indigo-500 ring-offset-2 ring-offset-white shadow-lg shadow-indigo-200 z-30"
                           )}
+                          onClick={(e) => {
+                            const target = e.target as HTMLElement;
+                            if (target.closest('button,.resize-handle')) return;
+                            handleReviewBoxLocateQuestion(box);
+                          }}
+                          onMouseEnter={() => {
+                            if (isReviewStep && linkedQuestionForBox) setHoveredReviewBoxId(box.id);
+                          }}
+                          onMouseLeave={() => {
+                            setHoveredReviewBoxId(prev => (prev === box.id ? null : prev));
+                          }}
                           style={{
                             left: renderStyle.left,
                             top: renderStyle.top,
@@ -7556,19 +7705,34 @@ export function UploadQuestionDialog({
                 )}
                 
                 <div className="space-y-3">
-                  {questions.map((question, questionIndex) => (
+                  {questions.map((question, questionIndex) => {
+                    const reviewBoxId = getReviewBoxIdForQuestion(question);
+                    const isReviewLinkedHighlighted = !!reviewBoxId && hoveredReviewBoxId === reviewBoxId;
+                    return (
                     <div
                       key={question.id}
                       id={`question-card-${question.id}`}
                       data-question-id={question.id}
                       className={cn(
                         "relative bg-white rounded-lg shadow-sm overflow-hidden transition-all",
-                        highlightedQuestionId === question.id && "ring-2 ring-blue-500 shadow-md",
+                        isReviewLinkedHighlighted && "ring-2 ring-indigo-500 bg-indigo-50/50 shadow-md shadow-indigo-100",
+                        highlightedQuestionId === question.id && "ring-2 ring-indigo-500 bg-indigo-50/50 shadow-md shadow-indigo-100",
                         highlightedQuestionIds.has(question.id) && "ring-2 ring-yellow-400 bg-yellow-50",
                         reRecognizingIds.has(question.id) && "opacity-40 pointer-events-none",
                         flashNewIds.has(question.id) && "ring-2 ring-emerald-400 shadow-lg shadow-emerald-200 animate-pulse",
                         flashUpdateIds.has(question.id) && "ring-2 ring-blue-400 shadow-lg shadow-blue-200 animate-pulse"
                       )}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest('button,input,textarea,select,[contenteditable="true"]')) return;
+                        handleLocateBoxByQuestion(question);
+                      }}
+                      onMouseEnter={() => {
+                        if (reviewBoxId) setHoveredReviewBoxId(reviewBoxId);
+                      }}
+                      onMouseLeave={() => {
+                        if (reviewBoxId) setHoveredReviewBoxId(prev => (prev === reviewBoxId ? null : prev));
+                      }}
                     >
                       {reRecognizingIds.has(question.id) && (
                         <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/30">
@@ -8255,18 +8419,8 @@ export function UploadQuestionDialog({
                                       value={question.blankAnswers[i] || ''}
                                       onChange={(e) => handleUpdateBlankAnswer(question.id, i, e.target.value)}
                                       placeholder={`第${i + 1}空答案`}
-                                      className="w-full px-3 py-1.5 pr-8 border rounded text-sm focus:outline-none focus:border-emerald-500"
+                                      className="w-full px-3 py-1.5 border rounded text-sm focus:outline-none focus:border-emerald-500"
                                     />
-                                    {question.blankAnswers?.[i] && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateBlankAnswer(question.id, i, '')}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500"
-                                        title="点击清空内容"
-                                      >
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -8279,18 +8433,8 @@ export function UploadQuestionDialog({
                                 value={question.answer || ''}
                                 onChange={(e) => handleUpdateAnswer(question.id, e.target.value)}
                                 placeholder="请输入答案"
-                                className="w-full px-3 py-1.5 pr-8 border rounded text-sm focus:outline-none focus:border-emerald-500"
+                                className="w-full px-3 py-1.5 border rounded text-sm focus:outline-none focus:border-emerald-500"
                               />
-                              {question.answer && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateAnswer(question.id, '')}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500"
-                                  title="点击清空内容"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
                             </div>
                           )}
                         </div>
@@ -8341,18 +8485,8 @@ export function UploadQuestionDialog({
                                 value={question.analysis || ''}
                                 onChange={(val) => handleUpdateAnalysis(question.id, val)}
                                 placeholder='请输入解析'
-                                className="w-full px-3 py-1.5 pr-8 border rounded text-sm resize-y min-h-[3rem] focus:outline-none focus:border-emerald-500"
+                                className="w-full px-3 py-1.5 border rounded text-sm resize-y min-h-[3rem] focus:outline-none focus:border-emerald-500"
                               />
-                              {question.analysis && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateAnalysis(question.id, '')}
-                                  className="absolute right-2 top-2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 z-10"
-                                  title="点击清空内容"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
                             </div>
                           )}
                         </div>
@@ -8368,7 +8502,7 @@ export function UploadQuestionDialog({
                             >
                             {!firstQuestionWithParentAnswerClearId && question.id === firstQuestionWithSubAnswerClearId &&
                               renderRequirementMarker('REVIEW_STEP-018', 'right-1 top-0')}
-                            <div className="text-xs font-medium text-gray-500 mb-2">{workMode === 'questions-only' ? '子题' : '子题答案'}</div>
+                            <div className="text-xs font-medium text-gray-500 mb-2">子题</div>
                             <div className="space-y-2 pr-1">
                             {(question.subQuestions || []).map((sub, subIndex) => (<Fragment key={sub.id}>
                               <div className="bg-gray-50 rounded-md px-3 py-2.5">
@@ -8414,17 +8548,29 @@ export function UploadQuestionDialog({
                                           <Link2Icon className="w-3 h-3" />
                                         </button>
                                       </div>
-                                      {isFillBlankType(sub.questionType) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleInsertInlineBlank(question.id, true, sub.id)}
-                                          disabled={isProcessing || getInlineBlankCount(sub.content) >= MAX_FILL_BLANK_COUNT}
-                                          className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                          title="在子题题干光标位置插入空位"
-                                        >
-                                          <Plus className="w-3 h-3" /> 插入空位
-                                        </button>
-                                      )}
+                                      <div className="flex items-center gap-1.5">
+                                        {isFillBlankType(sub.questionType) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleInsertInlineBlank(question.id, true, sub.id)}
+                                            disabled={isProcessing || getInlineBlankCount(sub.content) >= MAX_FILL_BLANK_COUNT}
+                                            className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                            title="在子题题干光标位置插入空位"
+                                          >
+                                            <Plus className="w-3 h-3" /> 插入空位
+                                          </button>
+                                        )}
+                                        {sub.content?.trim() && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateSubContent(question.id, sub.id, '')}
+                                            className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-0.5 transition-colors"
+                                            title="清空子题题干"
+                                          >
+                                            <Trash2 className="w-3 h-3" /> 清空
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
                                     <MathEditable
                                       value={sub.content}
@@ -8674,18 +8820,8 @@ export function UploadQuestionDialog({
                                             value={sub.blankAnswers?.[i] || ''}
                                             onChange={(e) => handleUpdateBlankAnswer(question.id, i, e.target.value, true, sub.id)}
                                             placeholder={`第${i + 1}空答案`}
-                                            className="w-full px-2.5 py-1.5 pr-8 border rounded text-sm bg-white focus:outline-none focus:border-emerald-500"
+                                            className="w-full px-2.5 py-1.5 border rounded text-sm bg-white focus:outline-none focus:border-emerald-500"
                                           />
-                                          {sub.blankAnswers?.[i] && (
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdateBlankAnswer(question.id, i, '', true, sub.id)}
-                                              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500"
-                                              title="点击清空内容"
-                                            >
-                                              <X className="w-3.5 h-3.5" />
-                                            </button>
-                                          )}
                                         </div>
                                       </div>
                                     ))}
@@ -8715,18 +8851,8 @@ export function UploadQuestionDialog({
                                           value={sub.answer}
                                           onChange={(e) => handleUpdateSubAnswer(question.id, sub.id, e.target.value)}
                                           placeholder={sub.questionType === '判断题' ? '如 对' : choiceQuestionTypes.includes(sub.questionType) ? '如 A' : '请输入答案'}
-                                          className="w-full px-2.5 py-1.5 pr-8 border rounded text-sm bg-white focus:outline-none focus:border-emerald-500"
+                                          className="w-full px-2.5 py-1.5 border rounded text-sm bg-white focus:outline-none focus:border-emerald-500"
                                         />
-                                        {sub.answer && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleUpdateSubAnswer(question.id, sub.id, '')}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500"
-                                            title="点击清空内容"
-                                          >
-                                            <X className="w-3.5 h-3.5" />
-                                          </button>
-                                        )}
                                       </div>
                                     </div>
                                   )}
@@ -8762,18 +8888,8 @@ export function UploadQuestionDialog({
                                           onChange={(e) => handleUpdateSubAnalysis(question.id, sub.id, e.target.value)}
                                           placeholder="选填"
                                           rows={2}
-                                          className="w-full px-2.5 py-1.5 pr-8 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500"
+                                          className="w-full px-2.5 py-1.5 border rounded text-sm bg-white resize-y min-h-[2rem] focus:outline-none focus:border-emerald-500"
                                         />
-                                        {sub.analysis && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleUpdateSubAnalysis(question.id, sub.id, '')}
-                                            className="absolute right-2 top-2 p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500"
-                                            title="点击清空内容"
-                                          >
-                                            <X className="w-3.5 h-3.5" />
-                                          </button>
-                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -8815,7 +8931,8 @@ export function UploadQuestionDialog({
                       </div>
                         </div>
                   </div>
-                ))}
+                    );
+                  })}
                 </div>
               </div>
 

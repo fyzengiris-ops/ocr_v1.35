@@ -138,7 +138,6 @@ export function filterUsefulItems(items?: string[]) {
 export function splitTextIntoReadableItems(value: string) {
   return value
     .split(/\r?\n+/)
-    .flatMap((line) => line.match(/[^。；;]+[。；;]?/g) ?? [line])
     .map((item) => item.trim())
     .filter(Boolean);
 }

@@ -170,8 +170,8 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
       id: 'UPLOAD_FILES_STEP-004',
       title: '无资料状态与直接上传',
       sourceType: 'code+decision',
-      changeType: 'new',
-      changeDate: '6.2',
+      changeType: 'changed',
+      changeDate: '6.21',
       objectType: 'region',
       objectName: '无资料状态上传区域',
       module: moduleName,
@@ -183,27 +183,28 @@ export const uploadFilesStepRegistry: RequirementRegistry = {
       display: {
         title: '上传资料入口',
         description:
-          '步骤 1 上传区顶部右侧显示「上传资料」按钮。无已有资料且无已添加文件时，按钮独立显示；有已有资料或有已添加文件时，按钮位于页数提示条右侧。',
-        fields: ['上传资料按钮', 'CloudUpload 图标'],
-        states: ['无资料态（按钮独立显示）', '有资料态（按钮位于提示条右侧）'],
+          '步骤 1 上传区顶部右侧显示「上传资料」按钮。无已有资料且无已添加文件时，按钮独立显示；有已有资料或有已添加文件时，按钮位于页数提示条右侧。【6.21】上传资料入口遵循乐课网单文件大小上限，超出上限的文件不进入文件列表。',
+        fields: ['上传资料按钮', 'CloudUpload 图标', '【6.21】单文件大小上限提示'],
+        states: ['无资料态（按钮独立显示）', '有资料态（按钮位于提示条右侧）', '【6.21】单文件超限：显示「请上传xM以内的文件」'],
       },
       operation: {
         title: '点击上传文件',
         description:
-          '用户点击「上传资料」按钮后调起系统文件选择器，支持 PNG、JPG、JPEG、DOC、DOCX、PDF 格式，可多选。新增文件复用既有的格式校验、重复文件拦截和页数检测规则。',
+          '用户点击「上传资料」按钮后调起系统文件选择器，支持 PNG、JPG、JPEG、DOC、DOCX、PDF 格式，可多选。新增文件复用既有的格式校验、重复文件拦截和页数检测规则。【6.21】单文件大小限制与乐课网上传文件大小限制保持一致，用户选择的单个文件超过限制时，系统拦截该文件并提示「请上传xM以内的文件」，其中 x 为乐课网文件大小限制数值。',
         permission: '沿用作业管理页中 AI 小乐识别资料入口的使用权限。',
         dataFlow: '有效文件进入当前上传区文件列表，参与页数统计和 24 页上限校验。',
         exceptions:
-          '文件格式不支持、重复文件或页数检测失败时，按已确认的拦截规则处理。',
+          '文件格式不支持、重复文件或页数检测失败时，按已确认的拦截规则处理。【6.21】单文件大小超出乐课网上限时，不加入文件列表，并提示「请上传xM以内的文件」。',
       },
       acceptance: [
         '无资料时应展示「上传资料」按钮。',
         '点击按钮可选择文件。',
         '无效资料应按既有规则拦截。',
+        '【6.21】单文件超出乐课网上限时，应拦截并展示「请上传xM以内的文件」提示。',
       ],
       source: {
         decisionFile,
-        decisionObject: '上传资料入口',
+        decisionObject: '上传资料入口；6.21 需求评审异常场景',
         relatedFiles,
       },
     },

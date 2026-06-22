@@ -568,6 +568,7 @@ const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const DEFAULT_CHOICE_OPTION_COUNT = 4;
 const JUDGE_OPTION_CONTENTS: Record<string, string> = { A: '对', B: '错' };
 const MAX_FILL_BLANK_COUNT = 10;
+const MAX_SUB_QUESTION_COUNT = 50;
 const CONTENT_BLANK_PATTERN = /(\[\[BLANK\]\]|_{2,}|[（(]\s*[）)]|[\[【]\s*[\]】])/g;
 
 function getInlineBlankCount(content: string): number {
@@ -642,8 +643,69 @@ function getAnswerOptionLetter(
     if (['对', '正确', '是', '√', '✓'].includes(normalized)) return 'A';
     if (['错', '错误', '否', '×', '✕', '✗'].includes(normalized)) return 'B';
   }
-  const matched = Object.entries(optionContents).find(([, value]) => value?.trim() === normalized);
+  const matched = Object.entries(optionContents)
+    .sort(([, a], [, b]) => (b?.trim().length || 0) - (a?.trim().length || 0))
+    .find(([, value]) => {
+      const optionText = value?.trim();
+      return !!optionText && (optionText === normalized || normalized.includes(optionText));
+    });
   return matched?.[0] || '';
+}
+
+function getAnswerOptionLetters(
+  questionType: string,
+  answer: string | undefined,
+  optionContents: Record<string, string> = {},
+  optionCount = DEFAULT_CHOICE_OPTION_COUNT
+): string[] {
+  const normalized = (answer || '').trim();
+  if (!normalized) return [];
+
+  if (questionType !== '多选题') {
+    const single = getAnswerOptionLetter(questionType, normalized, optionContents);
+    return single ? [single] : [];
+  }
+
+  const validLetters = OPTION_LETTERS.slice(0, optionCount).split('');
+  const upper = normalized.toUpperCase();
+  const letterSet = new Set<string>();
+  validLetters.forEach(letter => {
+    if (new RegExp(`(^|[^A-Z])${letter}([^A-Z]|$)`).test(upper) || upper.includes(letter)) {
+      letterSet.add(letter);
+    }
+  });
+  if (letterSet.size === 0) {
+    Object.entries(optionContents).forEach(([letter, value]) => {
+      if (validLetters.includes(letter) && value?.trim() && normalized.includes(value.trim())) {
+        letterSet.add(letter);
+      }
+    });
+  }
+  return validLetters.filter(letter => letterSet.has(letter));
+}
+
+function toggleChoiceAnswer(
+  questionType: string,
+  currentAnswer: string | undefined,
+  letter: string,
+  optionContents: Record<string, string> = {},
+  optionCount = DEFAULT_CHOICE_OPTION_COUNT
+): string {
+  if (questionType === '多选题') {
+    const selected = new Set(getAnswerOptionLetters(questionType, currentAnswer, optionContents, optionCount));
+    if (selected.has(letter)) {
+      selected.delete(letter);
+    } else {
+      selected.add(letter);
+    }
+    return OPTION_LETTERS.slice(0, optionCount)
+      .split('')
+      .filter(item => selected.has(item))
+      .join('');
+  }
+
+  const current = getAnswerOptionLetter(questionType, currentAnswer, optionContents);
+  return current === letter ? '' : letter;
 }
 
 function normalizeChoiceAnswerText(
@@ -3558,21 +3620,31 @@ export function UploadQuestionDialog({
         ...question,
         subQuestions: (question.subQuestions || []).map(s => {
           if (s.id !== subId) return s;
+          const mergedContents = { ...(s.optionContents || {}), ...newOptionContents };
+          const optionCount = Math.max(s.optionCount || 4, options.length);
+          const normalizedAnswer = s.answer
+            ? normalizeChoiceAnswerText(s.questionType, s.answer, mergedContents)
+            : s.answer;
           return {
             ...s,
-            optionContents: { ...(s.optionContents || {}), ...newOptionContents },
-            optionCount: Math.max(s.optionCount || 4, options.length),
-            // 图片模式：不设置 answer，由用户手动点击选择
+            optionContents: mergedContents,
+            optionCount,
+            answer: normalizedAnswer,
           };
         }),
       };
     }
 
     // 父题选项回填
+    const mergedContents = { ...(question.optionContents || {}), ...newOptionContents };
+    const normalizedAnswer = question.answer
+      ? normalizeChoiceAnswerText(question.questionType, question.answer, mergedContents)
+      : question.answer;
     return {
       ...question,
-      optionContents: { ...(question.optionContents || {}), ...newOptionContents },
+      optionContents: mergedContents,
       optionCount: newOptionCount,
+      answer: normalizedAnswer,
     };
   };
 
@@ -5602,6 +5674,7 @@ export function UploadQuestionDialog({
       if (q.id !== questionId) return q;
       // 批量更新所有子题的选项
       const updatedSubs = (q.subQuestions || []).map((sub, idx) => {
+        if (!choiceQuestionTypes.includes(sub.questionType)) return sub;
         const newContents: Record<string, string> = {};
         for (let i = 0; i < clampedCount; i++) {
           const letter = OPTION_LETTERS[i];
@@ -5609,12 +5682,68 @@ export function UploadQuestionDialog({
         }
         return {
           ...sub,
-          questionType: '单选题',
           optionCount: clampedCount,
           optionContents: newContents,
         };
       });
       return { ...q, subQuestions: updatedSubs };
+    }));
+  };
+
+  const buildNewSubQuestion = (parentQuestionType: string, newSubId: number, optionCount = DEFAULT_CHOICE_OPTION_COUNT): SubQuestion => {
+    const defaultType = isEnglishSubject && (parentQuestionType === '完形填空' || parentQuestionType === '阅读理解')
+      ? '单选题'
+      : resolveQuestionType(undefined, '', validQuestionTypes);
+    const resolvedOptionCount = getOptionCountForType(defaultType, optionCount);
+    return {
+      id: newSubId,
+      questionType: defaultType,
+      content: '',
+      answer: '',
+      analysis: '',
+      optionCount: resolvedOptionCount || undefined,
+      optionContents: resolvedOptionCount ? buildOptionContents(defaultType, resolvedOptionCount) : undefined,
+      blankCount: isFillBlankType(defaultType) ? 1 : undefined,
+      blankAnswers: isFillBlankType(defaultType) ? [] : undefined,
+    };
+  };
+
+  const handleUpdateSubQuestionCount = (questionId: number, nextCount: number) => {
+    const targetQuestion = questionsRef.current.find(q => q.id === questionId);
+    if (!targetQuestion) return;
+    const currentSubs = targetQuestion.subQuestions || [];
+    const clampedCount = Math.max(0, Math.min(MAX_SUB_QUESTION_COUNT, nextCount));
+    if (clampedCount === currentSubs.length) return;
+
+    if (clampedCount < currentSubs.length) {
+      const removingSubs = currentSubs.slice(clampedCount);
+      const hasProtectedContent = removingSubs.some(sub =>
+        hasUsableAnswer(sub) ||
+        hasUsableAnalysis(sub) ||
+        !!sub.content?.trim() ||
+        !!Object.values(sub.optionContents || {}).some(v => v?.trim())
+      );
+      if (hasProtectedContent && !window.confirm('减少子题数量将删除末尾已有内容的子题，是否继续？')) {
+        return;
+      }
+    }
+
+    setQuestions(prev => prev.map(q => {
+      if (q.id !== questionId) return q;
+      const subQuestions = [...(q.subQuestions || [])];
+      if (clampedCount < subQuestions.length) {
+        return { ...q, subQuestions: subQuestions.slice(0, clampedCount) };
+      }
+
+      let nextId = subQuestions.length > 0 ? Math.max(...subQuestions.map(s => s.id)) + 1 : 1;
+      const inheritedOptionCount = q.questionType === '完形填空' || q.questionType === '阅读理解'
+        ? (subQuestions[0]?.optionCount || q.optionCount || DEFAULT_CHOICE_OPTION_COUNT)
+        : DEFAULT_CHOICE_OPTION_COUNT;
+      while (subQuestions.length < clampedCount) {
+        subQuestions.push(buildNewSubQuestion(q.questionType, nextId, inheritedOptionCount));
+        nextId += 1;
+      }
+      return { ...q, subQuestions };
     }));
   };
 
@@ -5849,17 +5978,11 @@ export function UploadQuestionDialog({
       if (q.id !== questionId) return q;
       const subQuestions = [...(q.subQuestions || [])];
       const newSubId = subQuestions.length > 0 ? Math.max(...subQuestions.map(s => s.id)) + 1 : 1;
-      const insertAt = afterIndex !== undefined ? afterIndex + 1 : subQuestions.length; subQuestions.splice(Math.min(insertAt, subQuestions.length), 0, {
-        id: newSubId,
-        questionType: resolveQuestionType(undefined, '', validQuestionTypes),
-        content: '',
-        answer: '',
-        analysis: '',
-        optionCount: 4,
-        optionContents: {},
-        blankCount: 1,
-        blankAnswers: [],
-      });
+      const insertAt = afterIndex !== undefined ? afterIndex + 1 : subQuestions.length;
+      const inheritedOptionCount = q.questionType === '完形填空' || q.questionType === '阅读理解'
+        ? (subQuestions[0]?.optionCount || q.optionCount || DEFAULT_CHOICE_OPTION_COUNT)
+        : DEFAULT_CHOICE_OPTION_COUNT;
+      subQuestions.splice(Math.min(insertAt, subQuestions.length), 0, buildNewSubQuestion(q.questionType, newSubId, inheritedOptionCount));
       return { ...q, subQuestions };
     }));
   };
@@ -7724,6 +7847,18 @@ export function UploadQuestionDialog({
                     const reviewBoxId = getReviewBoxIdForQuestion(question);
                     const isReviewLinkedHighlighted = !!reviewBoxId && hoveredReviewBoxId === reviewBoxId;
                     const questionViewMode = getQuestionDisplayMode(question);
+                    const isQuestionChoice = choiceQuestionTypes.includes(question.questionType);
+                    const isQuestionJudge = question.questionType === '判断题';
+                    const isQuestionFillBlank = isFillBlankType(question.questionType);
+                    const isQuestionCompound = compoundQuestionTypes.includes(question.questionType);
+                    const isEnglishClozeQuestion = isEnglishSubject && question.questionType === '完形填空';
+                    const isEnglishReadingQuestion = isEnglishSubject && question.questionType === '阅读理解';
+                    const isEnglishSpecialSubCountQuestion = isEnglishClozeQuestion || isEnglishReadingQuestion;
+                    const parentOptionCount = getOptionCountForType(question.questionType, question.optionCount);
+                    const unifiedSubOptionCount = question.subQuestions?.[0]?.optionCount || question.optionCount || DEFAULT_CHOICE_OPTION_COUNT;
+                    const shouldShowCompactSubQuestionSummary =
+                      (workMode === 'questions-only' && questionViewMode === 'image' && isQuestionCompound && (question.subQuestions || []).length > 0) ||
+                      (workMode !== 'questions-only' && questionViewMode === 'image' && isEnglishReadingQuestion && (question.subQuestions || []).length > 0);
                     return (
                     <div
                       key={question.id}
@@ -7942,13 +8077,56 @@ export function UploadQuestionDialog({
                             <select value={question.questionType} onChange={(e) => handleUpdateQuestionType(question.id, e.target.value)} className="px-2 py-1 text-xs border rounded bg-white">
                               {questionTypes.map(type => (<option key={type} value={type}>{type}</option>))}
                             </select>
-                            {/* 完形填空：批量选项数控件 */}
-                            {question.questionType === '完形填空' && (question.subQuestions || []).length > 0 && (
-                              <div className="flex items-center gap-1 text-xs text-gray-600">
-                                <span>选项数:</span>
-                                <button onClick={() => handleUpdateClozeOptionCount(question.id, ((question.subQuestions?.[0]?.optionCount) || 4) - 1)} className="w-5 h-5 flex items-center justify-center rounded border hover:bg-gray-100">-</button>
-                                <span className="w-4 text-center font-medium">{question.subQuestions?.[0]?.optionCount || 4}</span>
-                                <button onClick={() => handleUpdateClozeOptionCount(question.id, ((question.subQuestions?.[0]?.optionCount) || 4) + 1)} className="w-5 h-5 flex items-center justify-center rounded border hover:bg-gray-100">+</button>
+                            {isQuestionChoice && !isQuestionJudge && (
+                              <div className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] text-gray-600">
+                                <span>选项数</span>
+                                <button type="button" onClick={() => handleUpdateOptionCount(question.id, Math.max(2, parentOptionCount - 1))} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100">-</button>
+                                <span className="w-5 text-center font-medium">{parentOptionCount}</span>
+                                <button type="button" onClick={() => handleUpdateOptionCount(question.id, Math.min(26, parentOptionCount + 1))} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100">+</button>
+                              </div>
+                            )}
+                            {(isEnglishClozeQuestion || isEnglishReadingQuestion) && (
+                              <div className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] text-gray-600">
+                                <span>选项数</span>
+                                <button type="button" onClick={() => handleUpdateClozeOptionCount(question.id, unifiedSubOptionCount - 1)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100">-</button>
+                                <span className="w-5 text-center font-medium">{unifiedSubOptionCount}</span>
+                                <button type="button" onClick={() => handleUpdateClozeOptionCount(question.id, unifiedSubOptionCount + 1)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100">+</button>
+                              </div>
+                            )}
+                            {isQuestionFillBlank && questionViewMode === 'image' && (
+                              <div className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] text-gray-600">
+                                <span>空数</span>
+                                <button type="button" onClick={() => handleUpdateBlankCount(question.id, (question.blankCount || 1) - 1)} disabled={(question.blankCount || 1) <= 1} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40">-</button>
+                                <span className="w-5 text-center font-medium">{question.blankCount || 1}</span>
+                                <button type="button" onClick={() => handleUpdateBlankCount(question.id, (question.blankCount || 1) + 1)} disabled={(question.blankCount || 1) >= MAX_FILL_BLANK_COUNT} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40">+</button>
+                              </div>
+                            )}
+                            {isQuestionFillBlank && questionViewMode === 'recognize' && (
+                              <button
+                                type="button"
+                                onClick={() => handleInsertInlineBlank(question.id)}
+                                disabled={isProcessing || getInlineBlankCount(question.content) >= MAX_FILL_BLANK_COUNT}
+                                className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="在题干光标位置插入空位"
+                              >
+                                <Plus className="w-3 h-3" /> 插入空位
+                              </button>
+                            )}
+                            {isQuestionCompound && !isEnglishSpecialSubCountQuestion && (
+                              <button
+                                type="button"
+                                onClick={() => handleAddSubQuestion(question.id)}
+                                className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100"
+                              >
+                                <Plus className="w-3 h-3" /> 子题
+                              </button>
+                            )}
+                            {isEnglishSpecialSubCountQuestion && (
+                              <div className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] text-gray-600">
+                                <span>子题数</span>
+                                <button type="button" onClick={() => handleUpdateSubQuestionCount(question.id, (question.subQuestions || []).length - 1)} disabled={(question.subQuestions || []).length <= 0} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40">-</button>
+                                <span className="w-5 text-center font-medium">{(question.subQuestions || []).length}</span>
+                                <button type="button" onClick={() => handleUpdateSubQuestionCount(question.id, (question.subQuestions || []).length + 1)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100">+</button>
                               </div>
                             )}
                           </div>
@@ -7975,6 +8153,51 @@ export function UploadQuestionDialog({
                             </button>
                           </div>
                         </div>
+
+                        {shouldShowCompactSubQuestionSummary && (
+                          <div className="mb-3 rounded-r border-l-3 border-emerald-400 bg-emerald-50/70 p-2">
+                            <div className="mb-1.5 text-[11px] font-medium text-emerald-700">子题</div>
+                            <div className="flex flex-wrap gap-2">
+                              {(question.subQuestions || []).map((sub, subIndex) => {
+                                const subOptionCount = getOptionCountForType(sub.questionType, sub.optionCount);
+                                const allowSubOptionCount =
+                                  workMode === 'questions-only' &&
+                                  questionViewMode === 'image' &&
+                                  choiceQuestionTypes.includes(sub.questionType) &&
+                                  sub.questionType !== '判断题' &&
+                                  !isEnglishClozeQuestion &&
+                                  !isEnglishReadingQuestion;
+                                return (
+                                  <div key={sub.id} className="inline-flex items-center gap-1 rounded border border-emerald-100 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm">
+                                    <span className="font-medium text-gray-500">（{subIndex + 1}）</span>
+                                    <select
+                                      value={sub.questionType}
+                                      onChange={(e) => handleUpdateSubQuestionType(question.id, sub.id, e.target.value)}
+                                      className="h-6 rounded border border-gray-200 bg-white px-1 text-xs"
+                                    >
+                                      {questionTypes.map(type => (<option key={type} value={type}>{type}</option>))}
+                                    </select>
+                                    {allowSubOptionCount && (
+                                      <span className="inline-flex items-center gap-0.5 rounded bg-gray-50 px-1 text-[11px]">
+                                        <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, subOptionCount - 1)} className="w-4 h-4 rounded hover:bg-gray-100">-</button>
+                                        <span className="w-4 text-center">{subOptionCount}</span>
+                                        <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, subOptionCount + 1)} className="w-4 h-4 rounded hover:bg-gray-100">+</button>
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteSubQuestion(question.id, sub.id)}
+                                      className="rounded p-0.5 text-gray-300 hover:bg-red-50 hover:text-red-500"
+                                      title="删除该子题"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {/* 题目图片/文本内容 */}
                         <div className="space-y-2">
@@ -8161,19 +8384,6 @@ export function UploadQuestionDialog({
                           </div>
                         ) : (
                           <div className="mb-3">
-                            {isFillBlankType(question.questionType) && (
-                              <div className="mb-1 flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => handleInsertInlineBlank(question.id)}
-                                  disabled={isProcessing || getInlineBlankCount(question.content) >= MAX_FILL_BLANK_COUNT}
-                                  className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  title="在题干光标位置插入空位"
-                                >
-                                  <Plus className="w-3 h-3" /> 插入空位
-                                </button>
-                              </div>
-                            )}
                             <MathEditable
                               value={question.content}
                               onChange={(val) => handleUpdateContent(question.id, val)}
@@ -8182,42 +8392,6 @@ export function UploadQuestionDialog({
                               className="w-full text-sm text-gray-700 bg-gray-50 p-2 rounded border resize-y min-h-[120px] focus:outline-none focus:border-blue-500"
                               placeholder="请输入题目内容"
                             />
-                          </div>
-                        )}
-                        {workMode === 'questions-only' && questionViewMode === 'image' && isFillBlankType(question.questionType) && (
-                          <div className="mb-3 rounded-r border-l-3 border-emerald-400 bg-emerald-50/70 p-2">
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className="text-[11px] font-medium text-emerald-700">作答空位</span>
-                              <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateBlankCount(question.id, (question.blankCount || 1) - 1)}
-                                  disabled={(question.blankCount || 1) <= 1}
-                                  className="w-5 h-5 flex items-center justify-center rounded border bg-white hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                  title="删除一个空位"
-                                >
-                                  -
-                                </button>
-                                <span className="w-6 text-center">{question.blankCount || 1}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateBlankCount(question.id, (question.blankCount || 1) + 1)}
-                                  disabled={(question.blankCount || 1) >= MAX_FILL_BLANK_COUNT}
-                                  className="w-5 h-5 flex items-center justify-center rounded border bg-white hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                  title="增加一个空位"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              {Array.from({ length: question.blankCount || 1 }, (_, i) => (
-                                <div key={i} className="flex items-center gap-2 rounded border border-emerald-100 bg-white px-2 py-1.5">
-                                  <span className="w-8 flex-shrink-0 text-xs font-medium text-gray-500">空{i + 1}</span>
-                                  <span className="h-5 flex-1 border-b-2 border-emerald-500" />
-                                </div>
-                              ))}
-                            </div>
                           </div>
                         )}
                         {/* 批量补全题干开关（英语 + 完形填空） */}
@@ -8234,19 +8408,21 @@ export function UploadQuestionDialog({
                           </div>
                         )}
                         {/* 父题选项区域 */}
-                        {choiceQuestionTypes.includes(question.questionType) && (() => {
+                        {choiceQuestionTypes.includes(question.questionType) && !(workMode === 'questions-only' && questionViewMode === 'image') && (() => {
                           const isParentOptionsLoading =
                             (
                               manualLinkProcessingTarget?.questionId === question.id &&
                               manualLinkProcessingTarget.subQuestionId === undefined &&
                               (manualLinkProcessingTarget.field === 'content' || manualLinkProcessingTarget.field === 'options' || manualLinkProcessingTarget.field === 'optionContent')
                           ) ||
-                            (questionViewMode === 'image' && isParentFieldProcessing(question.id, 'optionAnswer'));
+                            (questionViewMode === 'image' && workMode !== 'questions-only' && isParentFieldProcessing(question.id, 'optionAnswer'));
                           const parentOptionCount = getOptionCountForType(question.questionType, question.optionCount);
                           const parentSelectedOption = getAnswerOptionLetter(question.questionType, question.answer, question.optionContents || {});
+                          const parentSelectedOptions = getAnswerOptionLetters(question.questionType, question.answer, question.optionContents || {}, parentOptionCount);
                           const hasValidParentSelectedOption = isOptionWithinCandidateRange(parentSelectedOption, parentOptionCount);
                           const isParentJudge = question.questionType === '判断题';
-                          const parentOptionLinkField: ManualLinkField = questionViewMode === 'image' ? 'optionAnswer' : 'optionContent';
+                          const canSelectParentOptionInEdit = workMode !== 'questions-only' && questionViewMode === 'recognize';
+                          const parentOptionLinkField: ManualLinkField = questionViewMode === 'image' && workMode !== 'questions-only' ? 'optionAnswer' : 'optionContent';
                           const isParentOptionLinkActive =
                             manualLinkTarget?.questionId === question.id &&
                             manualLinkTarget.field === parentOptionLinkField &&
@@ -8269,7 +8445,7 @@ export function UploadQuestionDialog({
                                         : "hover:text-orange-500 hover:bg-orange-50",
                                       (isProcessing || isParentOptionsLoading) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300"
                                     )}
-                                    title={questionViewMode === 'image' ? '框选答案并自动选中选项' : '框选题干选项并自动拆分'}
+                                    title={questionViewMode === 'image' && workMode !== 'questions-only' ? '框选答案并自动选中选项' : '框选题干选项并自动拆分'}
                                   >
                                     <Link2Icon className="w-3 h-3" />
                                   </button>
@@ -8285,13 +8461,7 @@ export function UploadQuestionDialog({
                                   </button>
                                 )}
                               </div>
-                              {!isParentJudge && (
-                                <div className="flex items-center gap-1">
-                                  <button type="button" onClick={() => handleUpdateOptionCount(question.id, Math.max(2, parentOptionCount - 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">-</button>
-                                  <span className="text-[11px] text-gray-500 w-4 text-center">{parentOptionCount}</span>
-                                  <button type="button" onClick={() => handleUpdateOptionCount(question.id, Math.min(26, parentOptionCount + 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">+</button>
-                                </div>
-                              )}
+                              <div />
                             </div>
                             {isParentOptionsLoading ? (
                               <div className="flex items-center gap-2 py-1">
@@ -8324,10 +8494,47 @@ export function UploadQuestionDialog({
                               ) : (
                                 Array.from({ length: parentOptionCount }, (_, i) => {
                                   const letter = OPTION_LETTERS[i];
+                                  const isSelected = parentSelectedOptions.includes(letter);
                                   return (
                                     <div key={letter} className="flex items-center gap-2">
-                                      <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
-                                      <input type="text" value={question.optionContents[letter] ?? getDefaultOptionContent(question.questionType, letter)} onChange={(e) => handleUpdateOptionContent(question.id, letter, e.target.value)} placeholder={'选项 ' + letter} disabled={isProcessing} className="flex-1 px-2 py-1 border rounded text-xs bg-white focus:outline-none focus:border-emerald-500 disabled:opacity-50" />
+                                      {canSelectParentOptionInEdit ? (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleUpdateAnswer(
+                                              question.id,
+                                              toggleChoiceAnswer(question.questionType, question.answer, letter, question.optionContents || {}, parentOptionCount)
+                                            );
+                                          }}
+                                          disabled={isProcessing}
+                                          className={cn(
+                                            "w-6 h-6 rounded border text-xs font-medium transition-colors",
+                                            isSelected
+                                              ? "bg-emerald-500 text-white border-emerald-500"
+                                              : "bg-white text-gray-600 border-gray-300 hover:border-emerald-300 hover:text-emerald-600",
+                                            isProcessing && "cursor-not-allowed opacity-50"
+                                          )}
+                                          title="点击设为答案"
+                                        >
+                                          {letter}
+                                        </button>
+                                      ) : (
+                                        <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
+                                      )}
+                                      <input
+                                        type="text"
+                                        value={question.optionContents[letter] ?? getDefaultOptionContent(question.questionType, letter)}
+                                        onChange={(e) => handleUpdateOptionContent(question.id, letter, e.target.value)}
+                                        placeholder={'选项 ' + letter}
+                                        disabled={isProcessing}
+                                        className={cn(
+                                          "flex-1 px-2 py-1 border rounded text-xs focus:outline-none focus:border-emerald-500 disabled:opacity-50 transition-colors",
+                                          canSelectParentOptionInEdit && isSelected
+                                            ? "bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm shadow-emerald-100"
+                                            : "bg-white border-gray-200"
+                                        )}
+                                      />
                                     </div>
                                   );
                                 })
@@ -8341,7 +8548,10 @@ export function UploadQuestionDialog({
                           ); })()}
 
                         {/* 父题答案输入：无子题时常规显示；有子题但答案未能按标记拆分时保留父题区供人工拆分 */}
-                        {workMode !== 'questions-only' && (!(compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0) || getQuestionMatchInfo(question).needsManualSplit) && (
+                        {workMode !== 'questions-only' && (
+                          !(compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0) ||
+                          getQuestionMatchInfo(question).needsManualSplit
+                        ) && (
                         <div
                           data-req-anchor={question.id === firstQuestionWithParentAnswerClearId ? 'review-step-answer-clear' : undefined}
                           className="relative"
@@ -8353,7 +8563,16 @@ export function UploadQuestionDialog({
                             答案解析待人工拆分：当前内容保留在父题答案/解析区，请核对后拆到对应子题。
                           </div>
                         )}
-                        <div className="mb-2" style={questionViewMode === 'image' && choiceQuestionTypes.includes(question.questionType) ? { display: 'none' } : undefined}>
+                        <div
+                          className="mb-2"
+                          style={
+                            isEnglishClozeQuestion ||
+                            (choiceQuestionTypes.includes(question.questionType) &&
+                            (questionViewMode === 'image' || questionViewMode === 'recognize'))
+                              ? { display: 'none' }
+                              : undefined
+                          }
+                        >
                           <div className="flex items-center justify-between mb-1">
                             <div
                               data-req-anchor={question.id === firstQuestionWithCardActionsId ? 'review-step-answer-link-icon' : undefined}
@@ -8379,29 +8598,6 @@ export function UploadQuestionDialog({
                               </button>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              {isFillBlankType(question.questionType) && questionViewMode === 'image' && (
-                                <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateBlankCount(question.id, (question.blankCount || 1) - 1)}
-                                    disabled={(question.blankCount || 1) <= 1}
-                                    className="w-5 h-5 flex items-center justify-center rounded border hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="删除一个空位"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="w-6 text-center">{question.blankCount || 1}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateBlankCount(question.id, (question.blankCount || 1) + 1)}
-                                    disabled={(question.blankCount || 1) >= MAX_FILL_BLANK_COUNT}
-                                    className="w-5 h-5 flex items-center justify-center rounded border hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="增加一个空位"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              )}
                               {(question.answer || (question.blankAnswers && question.blankAnswers.some(b => b?.trim()))) && (
                                 <button
                                   type="button"
@@ -8522,7 +8718,7 @@ export function UploadQuestionDialog({
                         )}
 
                         {/* 复合题：子题答案区（仅当有子题时显示；一步识别模式不显示） */}
-                        {compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0 && (
+                        {compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length > 0 && !(workMode === 'questions-only' && questionViewMode === 'image') && (
                           <div className="relative border-t pt-2 mt-1">
                             <div
                               data-req-anchor={!firstQuestionWithParentAnswerClearId && question.id === firstQuestionWithSubAnswerClearId ? 'review-step-answer-clear' : undefined}
@@ -8538,8 +8734,32 @@ export function UploadQuestionDialog({
                                   <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium text-gray-700">{SUB_NUMBERS[subIndex] || `${subIndex + 1}`}</span>
                                     <select value={sub.questionType} onChange={(e) => handleUpdateSubQuestionType(question.id, sub.id, e.target.value)} className="px-1 py-0.5 text-[11px] border rounded bg-white h-5 text-gray-600">{questionTypes.map(type => (<option key={type} value={type}>{type}</option>))}</select>
-                                    {isFillBlankType(sub.questionType) && (sub.blankCount || 1) > 1 && (
-                                      <span className="text-xs text-gray-400">{sub.blankCount}个空</span>
+                                    {choiceQuestionTypes.includes(sub.questionType) && sub.questionType !== '判断题' && !isEnglishClozeQuestion && !isEnglishReadingQuestion && (
+                                      <span className="inline-flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1 text-[11px] text-gray-500">
+                                        <span>选项</span>
+                                        <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, getOptionCountForType(sub.questionType, sub.optionCount) - 1)} className="w-4 h-4 rounded hover:bg-gray-100">-</button>
+                                        <span className="w-4 text-center">{getOptionCountForType(sub.questionType, sub.optionCount)}</span>
+                                        <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, getOptionCountForType(sub.questionType, sub.optionCount) + 1)} className="w-4 h-4 rounded hover:bg-gray-100">+</button>
+                                      </span>
+                                    )}
+                                    {isFillBlankType(sub.questionType) && questionViewMode === 'image' && (
+                                      <span className="inline-flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1 text-[11px] text-gray-500">
+                                        <span>空数</span>
+                                        <button type="button" onClick={() => handleUpdateBlankCount(question.id, (sub.blankCount || 1) - 1, true, sub.id)} disabled={(sub.blankCount || 1) <= 1} className="w-4 h-4 rounded hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40">-</button>
+                                        <span className="w-4 text-center">{sub.blankCount || 1}</span>
+                                        <button type="button" onClick={() => handleUpdateBlankCount(question.id, (sub.blankCount || 1) + 1, true, sub.id)} disabled={(sub.blankCount || 1) >= MAX_FILL_BLANK_COUNT} className="w-4 h-4 rounded hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40">+</button>
+                                      </span>
+                                    )}
+                                    {isFillBlankType(sub.questionType) && questionViewMode === 'recognize' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleInsertInlineBlank(question.id, true, sub.id)}
+                                        disabled={isProcessing || getInlineBlankCount(sub.content) >= MAX_FILL_BLANK_COUNT}
+                                        className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        title="在子题题干光标位置插入空位"
+                                      >
+                                        <Plus className="w-3 h-3" /> 插入空位
+                                      </button>
                                     )}
                                   </div>
                                   <button
@@ -8555,7 +8775,9 @@ export function UploadQuestionDialog({
                                 {isReadingChoiceSubQuestion(question.questionType, sub.questionType) && (() => {
                                   const subOptionCount = getOptionCountForType(sub.questionType, sub.optionCount);
                                   const subSelectedOption = getAnswerOptionLetter(sub.questionType, sub.answer, sub.optionContents || {});
+                                  const subSelectedOptions = getAnswerOptionLetters(sub.questionType, sub.answer, sub.optionContents || {}, subOptionCount);
                                   const hasValidSubSelectedOption = isOptionWithinCandidateRange(subSelectedOption, subOptionCount);
+                                  const canSelectReadingOptionInEdit = workMode !== 'questions-only' && questionViewMode === 'recognize';
                                   const subStemLinkField: ManualLinkField = 'optionContent';
                                   const isSubStemLinkActive =
                                     manualLinkTarget?.questionId === question.id &&
@@ -8650,16 +8872,47 @@ export function UploadQuestionDialog({
                                             <div className="space-y-1.5">
                                               {Array.from({ length: subOptionCount }, (_, i) => {
                                                 const letter = OPTION_LETTERS[i];
+                                                const isSelected = subSelectedOptions.includes(letter);
                                                 return (
                                                   <div key={letter} className="flex items-center gap-2">
-                                                    <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
+                                                    {canSelectReadingOptionInEdit ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleUpdateSubAnswer(
+                                                            question.id,
+                                                            sub.id,
+                                                            toggleChoiceAnswer(sub.questionType, sub.answer, letter, sub.optionContents || {}, subOptionCount)
+                                                          );
+                                                        }}
+                                                        disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
+                                                        className={cn(
+                                                          "w-6 h-6 rounded border text-xs font-medium transition-colors",
+                                                          isSelected
+                                                            ? "bg-emerald-500 text-white border-emerald-500"
+                                                            : "bg-white text-gray-600 border-gray-300 hover:border-emerald-300 hover:text-emerald-600",
+                                                          isSubQuestionAnyProcessing(question.id, sub.id) && "cursor-not-allowed opacity-50"
+                                                        )}
+                                                        title="点击设为答案"
+                                                      >
+                                                        {letter}
+                                                      </button>
+                                                    ) : (
+                                                      <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
+                                                    )}
                                                     <input
                                                       type="text"
                                                       value={sub.optionContents?.[letter] ?? getDefaultOptionContent(sub.questionType, letter)}
                                                       onChange={(e) => handleUpdateSubOptionContent(question.id, sub.id, letter, e.target.value)}
                                                       placeholder={'选项 ' + letter}
                                                       disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
-                                                      className="flex-1 px-2 py-1 border rounded text-xs bg-white focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                                                      className={cn(
+                                                        "flex-1 px-2 py-1 border rounded text-xs focus:outline-none focus:border-emerald-500 disabled:opacity-50 transition-colors",
+                                                        canSelectReadingOptionInEdit && isSelected
+                                                          ? "bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm shadow-emerald-100"
+                                                          : "bg-white border-gray-200"
+                                                      )}
                                                     />
                                                   </div>
                                                 );
@@ -8702,17 +8955,6 @@ export function UploadQuestionDialog({
                                         </button>
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        {isFillBlankType(sub.questionType) && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleInsertInlineBlank(question.id, true, sub.id)}
-                                            disabled={isProcessing || getInlineBlankCount(sub.content) >= MAX_FILL_BLANK_COUNT}
-                                            className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                            title="在子题题干光标位置插入空位"
-                                          >
-                                            <Plus className="w-3 h-3" /> 插入空位
-                                          </button>
-                                        )}
                                         {sub.content?.trim() && (
                                           <button
                                             type="button"
@@ -8737,13 +8979,61 @@ export function UploadQuestionDialog({
                                     </>)}
                                   </div>
                                 )}
+                                {workMode === 'questions-only' && questionViewMode === 'recognize' && choiceQuestionTypes.includes(sub.questionType) && !isReadingChoiceSubQuestion(question.questionType, sub.questionType) && !isEnglishClozeQuestion && (
+                                  <div className="mb-2 pl-2 border-l-3 border-emerald-400 bg-emerald-50/70 rounded-r p-2">
+                                    {isSubQuestionContentProcessing(question.id, sub.id) ? (
+                                      <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 text-emerald-500 animate-spin" /><span className="text-sm text-emerald-600">题干识别中...</span></div>
+                                    ) : (<>
+                                      <div className="flex items-center justify-between mb-0.5">
+                                        <div className="flex items-center gap-1">
+                                          <label className="text-xs text-gray-500">子题题干</label>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, 'content', sub.id); }}
+                                            disabled={isProcessing || isSubQuestionAnyProcessing(question.id, sub.id)}
+                                            className={cn(
+                                              "p-0.5 rounded text-gray-300 transition-colors",
+                                              manualLinkTarget?.questionId === question.id && manualLinkTarget.field === 'content' && manualLinkTarget.subQuestionId === sub.id
+                                                ? "bg-orange-50 text-orange-500"
+                                                : "hover:text-orange-500 hover:bg-orange-50",
+                                              (isProcessing || isSubQuestionAnyProcessing(question.id, sub.id)) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300"
+                                            )}
+                                            title="框选内容并填入子题题干区"
+                                          >
+                                            <Link2Icon className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                        {sub.content?.trim() && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateSubContent(question.id, sub.id, '')}
+                                            className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-0.5 transition-colors"
+                                            title="清空子题题干"
+                                          >
+                                            <Trash2 className="w-3 h-3" /> 清空
+                                          </button>
+                                        )}
+                                      </div>
+                                      <MathEditable
+                                        value={sub.content}
+                                        onChange={(val) => handleUpdateSubContent(question.id, sub.id, val)}
+                                        onSelectionChange={(selection) => handleContentSelectionChange(`${question.id}:${sub.id}`, selection)}
+                                        placeholder="请输入子题题干内容"
+                                        className="w-full text-sm bg-white"
+                                        minHeight="48px"
+                                      />
+                                    </>)}
+                                  </div>
+                                )}
                                 {/* 客观题选项区域 */}
                                 {choiceQuestionTypes.includes(sub.questionType) && !isReadingChoiceSubQuestion(question.questionType, sub.questionType) && (() => {
                                   const subOptionCount = getOptionCountForType(sub.questionType, sub.optionCount);
                                   const subSelectedOption = getAnswerOptionLetter(sub.questionType, sub.answer, sub.optionContents || {});
+                                  const subSelectedOptions = getAnswerOptionLetters(sub.questionType, sub.answer, sub.optionContents || {}, subOptionCount);
                                   const hasValidSubSelectedOption = isOptionWithinCandidateRange(subSelectedOption, subOptionCount);
                                   const isSubJudge = sub.questionType === '判断题';
-                                  const subOptionLinkField: ManualLinkField = questionViewMode === 'image' ? 'optionAnswer' : 'optionContent';
+                                  const canSelectSubOptionInEdit = workMode !== 'questions-only' && questionViewMode === 'recognize';
+                                  const subOptionLinkField: ManualLinkField = questionViewMode === 'image' && workMode !== 'questions-only' ? 'optionAnswer' : 'optionContent';
                                   const isSubOptionLinkActive =
                                     manualLinkTarget?.questionId === question.id &&
                                     manualLinkTarget.field === subOptionLinkField &&
@@ -8751,7 +9041,7 @@ export function UploadQuestionDialog({
                                   const subOptionTargetKey = getOptionTargetKey(question.id, sub.id);
                                   const isSubOptionsLoading =
                                     isSubQuestionContentProcessing(question.id, sub.id) ||
-                                    (questionViewMode === 'image' && isSubQuestionFieldProcessing(question.id, sub.id, 'optionAnswer'));
+                                    (questionViewMode === 'image' && workMode !== 'questions-only' && isSubQuestionFieldProcessing(question.id, sub.id, 'optionAnswer'));
                                   return (
                                   <div className="mb-2 pl-2 border-l-3 border-emerald-400 bg-emerald-50/70 rounded-r p-2 space-y-1.5">
                                     {isSubOptionsLoading && (
@@ -8772,7 +9062,7 @@ export function UploadQuestionDialog({
                                                 : "hover:text-orange-500 hover:bg-orange-50",
                                               (isProcessing || isSubQuestionAnyProcessing(question.id, sub.id)) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300"
                                             )}
-                                            title={questionViewMode === 'image' ? '框选答案并自动选中选项' : '框选该子题选项并自动拆分'}
+                                            title={questionViewMode === 'image' && workMode !== 'questions-only' ? '框选答案并自动选中选项' : '框选该子题选项并自动拆分'}
                                           >
                                             <Link2Icon className="w-3 h-3" />
                                           </button>
@@ -8788,13 +9078,7 @@ export function UploadQuestionDialog({
                                           </button>
                                         )}
                                       </div>
-                                      {!isSubJudge && (
-                                        <div className="flex items-center gap-1">
-                                          <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, Math.max(2, subOptionCount - 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">-</button>
-                                          <span className="text-[11px] text-gray-500 w-4 text-center">{subOptionCount}</span>
-                                          <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, Math.min(26, subOptionCount + 1))} className="w-4 h-4 flex items-center justify-center rounded border text-[10px] hover:bg-gray-100">+</button>
-                                        </div>
-                                      )}
+                                      <div />
                                     </div>
                                     {questionViewMode === 'image'
                                       ? (
@@ -8822,14 +9106,45 @@ export function UploadQuestionDialog({
                                       ) : (
                                         Array.from({ length: subOptionCount }, (_, i) => {
                                           const letter = OPTION_LETTERS[i];
+                                          const isSelected = subSelectedOptions.includes(letter);
                                           return (
                                             <div key={letter} className="flex items-center gap-2">
-                                              <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
+                                              {canSelectSubOptionInEdit ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleUpdateSubAnswer(
+                                                      question.id,
+                                                      sub.id,
+                                                      toggleChoiceAnswer(sub.questionType, sub.answer, letter, sub.optionContents || {}, subOptionCount)
+                                                    );
+                                                  }}
+                                                  disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
+                                                  className={cn(
+                                                    "w-6 h-6 rounded border text-xs font-medium transition-colors",
+                                                    isSelected
+                                                      ? "bg-emerald-500 text-white border-emerald-500"
+                                                      : "bg-white text-gray-600 border-gray-300 hover:border-emerald-300 hover:text-emerald-600",
+                                                    isSubQuestionAnyProcessing(question.id, sub.id) && "cursor-not-allowed opacity-50"
+                                                  )}
+                                                  title="点击设为答案"
+                                                >
+                                                  {letter}
+                                                </button>
+                                              ) : (
+                                                <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
+                                              )}
                                               <input type="text" value={sub.optionContents?.[letter] ?? getDefaultOptionContent(sub.questionType, letter)}
                                                 onChange={(e) => handleUpdateSubOptionContent(question.id, sub.id, letter, e.target.value)}
                                                 placeholder={'选项 ' + letter}
                                                 disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
-                                                className="flex-1 px-2 py-1 border rounded text-xs bg-white focus:outline-none focus:border-emerald-500 disabled:opacity-50" />
+                                                className={cn(
+                                                  "flex-1 px-2 py-1 border rounded text-xs focus:outline-none focus:border-emerald-500 disabled:opacity-50 transition-colors",
+                                                  canSelectSubOptionInEdit && isSelected
+                                                    ? "bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm shadow-emerald-100"
+                                                    : "bg-white border-gray-200"
+                                                )} />
                                             </div>
                                           );
                                         })
@@ -8841,55 +9156,11 @@ export function UploadQuestionDialog({
                                       )}
                                   </div>
                                 ); })()}
-                                {workMode === 'questions-only' && questionViewMode === 'image' && isFillBlankType(sub.questionType) && (
-                                  <div className="mb-2 rounded-r border-l-3 border-emerald-400 bg-emerald-50/70 p-2">
-                                    <div className="mb-2 flex items-center justify-between">
-                                      <span className="text-[11px] font-medium text-emerald-700">作答空位</span>
-                                      <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateBlankCount(question.id, (sub.blankCount || 1) - 1, true, sub.id)}
-                                          disabled={(sub.blankCount || 1) <= 1}
-                                          className="w-5 h-5 flex items-center justify-center rounded border bg-white hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                          title="删除一个空位"
-                                        >
-                                          -
-                                        </button>
-                                        <span className="w-6 text-center">{sub.blankCount || 1}</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateBlankCount(question.id, (sub.blankCount || 1) + 1, true, sub.id)}
-                                          disabled={(sub.blankCount || 1) >= MAX_FILL_BLANK_COUNT}
-                                          className="w-5 h-5 flex items-center justify-center rounded border bg-white hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                          title="增加一个空位"
-                                        >
-                                          +
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {Array.from({ length: sub.blankCount || 1 }, (_, i) => (
-                                        <div key={i} className="flex items-center gap-2 rounded border border-emerald-100 bg-white px-2 py-1.5">
-                                          <span className="w-8 flex-shrink-0 text-xs font-medium text-gray-500">空{i + 1}</span>
-                                          <span className="h-5 flex-1 border-b-2 border-emerald-500" />
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {workMode === 'questions-only' && questionViewMode === 'image' && !choiceQuestionTypes.includes(sub.questionType) && !isFillBlankType(sub.questionType) && (
-                                  <div className="mb-2 rounded-r border-l-3 border-emerald-400 bg-emerald-50/70 p-2">
-                                    <div className="mb-1.5 flex items-center justify-between">
-                                      <span className="text-[11px] font-medium text-emerald-700">作答区</span>
-                                      <span className="text-[10px] text-gray-400">学生作答位置</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 rounded border border-emerald-100 bg-white px-2 py-2">
-                                      <span className="h-5 flex-1 border-b-2 border-emerald-500" />
-                                    </div>
-                                  </div>
-                                )}
                                 <div className="space-y-2" style={workMode === 'questions-only' ? { display: 'none' } : undefined}>
-                                  {!(questionViewMode === 'image' && choiceQuestionTypes.includes(sub.questionType)) && (
+                                  {!(
+                                    choiceQuestionTypes.includes(sub.questionType) &&
+                                    (questionViewMode === 'image' || (workMode !== 'questions-only' && questionViewMode === 'recognize'))
+                                  ) && (
                                   <>
                                   {isSubQuestionFieldProcessing(question.id, sub.id, 'answer') ? (
                                     <div className="relative">
@@ -8927,29 +9198,6 @@ export function UploadQuestionDialog({
                                         </button>
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        {questionViewMode === 'image' && (
-                                        <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleUpdateBlankCount(question.id, (sub.blankCount || 1) - 1, true, sub.id)}
-                                            disabled={(sub.blankCount || 1) <= 1}
-                                            className="w-5 h-5 flex items-center justify-center rounded border hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                            title="删除一个空位"
-                                          >
-                                            -
-                                          </button>
-                                          <span className="w-6 text-center">{sub.blankCount || 1}</span>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleUpdateBlankCount(question.id, (sub.blankCount || 1) + 1, true, sub.id)}
-                                            disabled={(sub.blankCount || 1) >= MAX_FILL_BLANK_COUNT}
-                                            className="w-5 h-5 flex items-center justify-center rounded border hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                            title="增加一个空位"
-                                          >
-                                            +
-                                          </button>
-                                        </div>
-                                        )}
                                         {sub.blankAnswers && sub.blankAnswers.some(b => b?.trim()) && (
                                           <button
                                             type="button"
@@ -9013,7 +9261,7 @@ export function UploadQuestionDialog({
                                   )}
                                   </>
                                   )}
-                                  <div style={workMode === 'questions-only' ? { display: 'none' } : undefined}>
+                                  <div style={workMode === 'questions-only' || isEnglishClozeQuestion ? { display: 'none' } : undefined}>
                                     <div className="flex items-center justify-between mb-0.5">
                                       <div className="flex items-center gap-1">
                                         <label className="text-xs text-gray-500">解析</label>
@@ -9063,25 +9311,63 @@ export function UploadQuestionDialog({
                                 </div>
                               )}
                             </Fragment>))}
-                              <button
-                                onClick={() => handleAddSubQuestion(question.id)}
-                                className="flex items-center justify-center gap-1 w-full py-1.5 text-xs text-emerald-600 border border-dashed border-emerald-300 rounded hover:bg-emerald-50 transition-colors"
-                              >
-                                <Plus className="w-3 h-3" /> 子题
-                              </button>
                             </div>
                             </div>
                           </div>
                         )}
-                        {/* 复合题无子题时：在解析区下方显示添加子题入口 */}
-                        {compoundQuestionTypes.includes(question.questionType) && (question.subQuestions || []).length === 0 && (
-                          <div className="pt-2 mt-1">
-                            <button
-                              onClick={() => handleAddSubQuestion(question.id)}
-                              className="flex items-center justify-center gap-1 w-full py-2 text-xs text-emerald-600 border border-dashed border-emerald-300 rounded hover:bg-emerald-50 transition-colors"
-                            >
-                              <Plus className="w-3 h-3" /> 子题
-                            </button>
+
+                        {workMode !== 'questions-only' && isEnglishClozeQuestion && (
+                          <div className="mt-2 border-t pt-2">
+                            <div className="mb-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-1">
+                                  <label className="text-xs font-medium text-gray-500">【解析】</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDirectedManualLinkEntryClick(question.id, 'analysis')}
+                                    disabled={isProcessing || isParentFieldProcessing(question.id, 'analysis') || answerProcessingForQuestionIds.has(question.id)}
+                                    className={cn(
+                                      "p-0.5 rounded text-gray-300 transition-colors",
+                                      manualLinkTarget?.questionId === question.id && manualLinkTarget.field === 'analysis'
+                                        ? "bg-orange-50 text-orange-500"
+                                        : "hover:bg-orange-50 hover:text-orange-500",
+                                      (isProcessing || isParentFieldProcessing(question.id, 'analysis') || answerProcessingForQuestionIds.has(question.id)) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300"
+                                    )}
+                                    title="框选内容并填入本题解析"
+                                  >
+                                    <Link2Icon className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                {question.analysis?.trim() && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateAnalysis(question.id, '')}
+                                    className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-0.5 transition-colors"
+                                    title="清空解析"
+                                  >
+                                    <Trash2 className="w-3 h-3" /> 清空
+                                  </button>
+                                )}
+                              </div>
+                              {isParentFieldProcessing(question.id, 'analysis') || answerProcessingForQuestionIds.has(question.id) ? (
+                                <div className="relative">
+                                  <div className="w-full px-3 py-1.5 border rounded text-sm bg-emerald-50/50 border-emerald-300 animate-pulse min-h-[3rem]" />
+                                  <div className="absolute inset-0 flex items-center gap-2 px-3 pointer-events-none">
+                                    <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
+                                    <span className="text-sm text-emerald-600">解析识别中...</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="relative">
+                                  <MathEditable
+                                    value={question.analysis || ''}
+                                    onChange={(val) => handleUpdateAnalysis(question.id, val)}
+                                    placeholder='请输入解析'
+                                    className="w-full px-3 py-1.5 border rounded text-sm resize-y min-h-[3rem] focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
 

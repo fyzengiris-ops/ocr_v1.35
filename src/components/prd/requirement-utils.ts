@@ -120,6 +120,7 @@ export const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGr
         'REVIEW_STEP-005',
         'REVIEW_STEP-018',
         'REVIEW_STEP-004',
+        'REVIEW_STEP-020',
       ],
     },
   ],

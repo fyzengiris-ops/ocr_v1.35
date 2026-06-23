@@ -15,6 +15,7 @@ import {
 import { BookOpen, GripVertical } from 'lucide-react';
 
 import type { ActivationStep, RequirementItem, RequirementRegistry } from '@/requirements';
+import { requirementDisplayGroupConfigs } from './requirement-utils';
 import { RequirementHighlight } from './RequirementHighlight';
 import { RequirementPanel } from './RequirementPanel';
 
@@ -254,16 +255,33 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
   );
 
   const panelRegistries = useMemo(() => {
-    if (!activeRequirementIds || activeRequirementIds.length === 0) {
-      return registries;
+    // 收集所有跨注册表分组配置中引用的外部 ID（这些 ID 会被合并到目标注册表的分组中，需从原始注册表中移除）
+    const crossRegistryIds = new Set<string>();
+    for (const [registryId, configs] of Object.entries(requirementDisplayGroupConfigs)) {
+      const registryReqIds = new Set(
+        registries.find(r => r.registryId === registryId)?.requirements.map(r => r.id) ?? []
+      );
+      for (const config of configs) {
+        for (const id of config.requirementIds) {
+          if (!registryReqIds.has(id)) {
+            crossRegistryIds.add(id);
+          }
+        }
+      }
     }
 
-    const activeRequirementIdSet = new Set(activeRequirementIds);
+    const activeRequirementIdSet = activeRequirementIds && activeRequirementIds.length > 0
+      ? new Set(activeRequirementIds)
+      : null;
+
+    const filterFn = activeRequirementIdSet
+      ? (req: RequirementItem) => activeRequirementIdSet.has(req.id) && !crossRegistryIds.has(req.id)
+      : (req: RequirementItem) => !crossRegistryIds.has(req.id);
 
     return registries
       .map((registry) => ({
         ...registry,
-        requirements: registry.requirements.filter((requirement) => activeRequirementIdSet.has(requirement.id)),
+        requirements: registry.requirements.filter(filterFn),
       }))
       .filter((registry) => registry.requirements.length > 0);
   }, [activeRequirementIds, registries]);
@@ -319,6 +337,7 @@ export function RequirementReaderShell({ registries, children }: RequirementRead
             <RequirementPanel
               registries={panelRegistries}
               displayNumberRegistries={registries}
+              allRegistries={registries}
               selectedRequirementId={selectedRequirementId}
               onSelectRequirement={activateRequirement}
               onClose={() => setPanelOpen(false)}

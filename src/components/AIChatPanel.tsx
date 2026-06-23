@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import Image from 'next/image';
-import { 
-  X, 
-  Send, 
-  Upload
+import {
+  X,
+  Send,
+  Upload,
+  FileText
 } from 'lucide-react';
 import { RequirementMarker } from '@/components/prd/RequirementMarker';
 import { aiChatPanelRegistry } from '@/requirements';
@@ -15,22 +16,22 @@ interface AIChatPanelProps {
   onClose: () => void;
   onActionClick: (action: string) => void;
   uploadedFile: File | null;
+  pendingFiles?: { name: string }[] | null;
 }
 
 interface Message {
   id: number;
   type: 'ai' | 'user';
   content: string;
-  file?: {
-    name: string;
-    size: string;
-  };
+  file?: { name: string; size: string };
+  files?: { name: string }[];
 }
 
-export function AIChatPanel({ 
-  onClose, 
-  onActionClick, 
-  uploadedFile
+export function AIChatPanel({
+  onClose,
+  onActionClick,
+  uploadedFile,
+  pendingFiles,
 }: AIChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -100,6 +101,35 @@ export function AIChatPanel({
 
     return () => clearTimeout(timeoutId);
   }, [uploadedFile]);
+
+  const pendingFilesKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingFiles || pendingFiles.length === 0) return;
+
+    const key = pendingFiles.map(f => f.name).join('|');
+    if (pendingFilesKeyRef.current === key) return;
+    pendingFilesKeyRef.current = key;
+
+    const timeoutId = setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          type: 'user',
+          content: '帮我识别以下资料',
+          files: pendingFiles,
+        },
+        {
+          id: prev.length + 2,
+          type: 'ai',
+          content: '好的，接下来我将为您识别文档资料，并为您转换成在线试卷',
+        },
+      ]);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [pendingFiles]);
 
   const handleQuickAction = (action: string) => {
     setActiveAction(action);
@@ -215,7 +245,19 @@ export function AIChatPanel({
                   <div className="bg-emerald-500 text-white rounded-lg p-3 text-sm">
                     {message.content}
                   </div>
-                  {message.file && (
+                  {message.files && message.files.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {message.files.map((f, i) => (
+                        <div key={i} className="bg-gray-100 rounded-lg p-2 flex items-center gap-2">
+                          <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <div className="text-sm text-gray-700 truncate">{f.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {message.file && !message.files && (
                     <div className="mt-2 bg-gray-100 rounded-lg p-2 flex items-center gap-2">
                       <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
                         <Upload className="w-4 h-4 text-blue-600" />

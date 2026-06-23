@@ -77,6 +77,7 @@ export interface QuestionBox {
   height: number;
   isSelected: boolean;
   pageNumber: number;
+  recognitionStatus?: 'pending' | 'recognizing' | 'recognized' | 'stale' | 'failed'; // 框识别状态：待识别/识别中/已识别/待重新识别/识别失败
   recognized?: boolean; // 是否已被AI识别
   type?: 'question' | 'answer' | 'full'; // 框类型：仅题干 / 仅答案解析 / 题干(含答案解析)
   questionNumber?: number; // 关联的题号（答案框显示"第X题答案"）
@@ -126,6 +127,18 @@ export interface MatchedQuestion {
 
   // 显示控制
   showRecognizedContent: boolean;
+  // 子题结构（AI返回的结构化子题）
+  subQuestions?: Array<{
+    id?: number;
+    questionType?: string;
+    content?: string;
+    answer?: string;
+    analysis?: string;
+    optionCount?: number | null;
+    optionContents?: Record<string, string>;
+    blankCount?: number | null;
+    blankAnswers?: string[];
+  }>;
 }
 
 /**

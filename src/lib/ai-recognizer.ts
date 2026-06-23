@@ -5,7 +5,7 @@
 
 // ==================== 学科题型映射 ====================
 export const SUBJECT_QUESTION_TYPES: Record<string, string[]> = {
-  '英语': ['单选题', '多选题', '填空题', '完形填空', '阅读理解', '问答题', '翻译题', '书面表达', '短文填空', '选词填空', '任务型阅读'],
+  '英语': ['单选题', '多选题', '填空题', '判断题', '完形填空', '阅读理解', '问答题', '翻译题', '材料题', '书面表达', '短文改错', '短文填空', '任务型阅读', '选词填空', '单词拼写', '句型转换', '口语题', '手写题', '综合题', '七选五'],
   '物理': ['单选题', '多选题', '判断题', '填空题', '计算题', '解答题', '证明题', '材料题', '综合题', '实验探究题', '问答题'],
   '数学': ['单选题', '多选题', '判断题', '填空题', '计算题', '解答题', '证明题', '材料题', '综合题', '实验探究题', '问答题'],
 };
@@ -142,6 +142,7 @@ export const SYSTEM_PROMPT_CROPPED = `你是一个教育资料智能识别专家
    - 解答题/问答题特征：有"证明"、"求"、"已知...求"等关键词，常带(1)(2)(3)子题
 3. **选项数**：选择题统计选项总数（如A/B/C/D为4），非选择题为null
 3.5. **填空数**：填空题统计需要填写的空位数（如____出现3次则为3），非填空题为null
+3.6. **大题子题必需结构化拆分**：当大题包含子题标号（\`（1）\`、\`(1)\`、\`1.\`、\`①\` 等）时，必须拆分成独立的 subQuestion。父题 content 只保留第一个子题标号之前的内容。每个 subQuestion 必须有 content（子题题干文本，去掉标号前缀）、根据子题内容推断 questionType（有 A/B/C/D 选项是单选题，只有两个选项是判断题，其余按特征判断）、如有选项则填写 optionCount 和 optionContents（如 {"A":"...","B":"..."}）、如有答案/解析则分别填入对应字段，留空填空字符串。
 4. **答案**：如果有答案，提取出来（如"A"、"B"等）
 5. **解析**：如果有解析，提取出来
 
@@ -149,7 +150,7 @@ export const SYSTEM_PROMPT_CROPPED = `你是一个教育资料智能识别专家
 你必须只输出一个有效的JSON对象，不要输出任何其他文字、解释或markdown标记。
 
 输出格式示例：
-{"questions":[{"imageIndex":0,"content":"以下哪个是水果？A.苹果 B.白菜 C.胡萝卜 D.西红柿","questionType":"单选题","optionCount":4,"blankCount":null,"answer":"A","analysis":"苹果是水果，白菜是蔬菜","confidence":0.95},{"imageIndex":1,"content":"已知f(x)=x^2+2x+1，则f(2)=____","questionType":"填空题","optionCount":null,"blankCount":1,"answer":"9","analysis":"f(2)=4+4+1=9","confidence":0.9},{"imageIndex":2,"content":"已知函数f(x)=ln(x^(-2)-x^2)\\n(1)证明f(x)是偶函数\\n(2)求f(x)的定义域","questionType":"解答题","optionCount":null,"blankCount":null,"answer":null,"analysis":null,"confidence":0.85}],"summary":{"totalCount":3,"hasAnswerCount":2,"noAnswerCount":1}}
+{"questions":[{"imageIndex":0,"content":"以下哪个是水果？A.苹果 B.白菜 C.胡萝卜 D.西红柿","questionType":"单选题","optionCount":4,"blankCount":null,"subQuestions":[],"answer":"A","analysis":"苹果是水果，白菜是蔬菜","confidence":0.95},{"imageIndex":1,"content":"已知f(x)=x^2+2x+1，则f(2)=____","questionType":"填空题","optionCount":null,"blankCount":1,"subQuestions":[],"answer":"9","analysis":"f(2)=4+4+1=9","confidence":0.9},{"imageIndex":2,"content":"已知函数f(x)=ln(x^(-2)-x^2)","questionType":"解答题","optionCount":null,"blankCount":null,"subQuestions":[{"content":"证明f(x)是偶函数","questionType":"解答题","optionCount":null,"optionContents":{},"answer":"证明：f(-x)=ln((-x)^(-2)-(-x)^2)=ln(x^(-2)-x^2)=f(x)，所以f(x)是偶函数","analysis":"偶函数定义：f(-x)=f(x)，代入验证即可。"},{"content":"求f(x)的定义域","questionType":"解答题","optionCount":null,"optionContents":{},"answer":"(-1,0)∪(0,1)","analysis":"由x^(-2)-x^2>0得..."}],"answer":null,"analysis":null,"confidence":0.85}],"summary":{"totalCount":3,"hasAnswerCount":2,"noAnswerCount":1}}
 
 ## 重要规则
 1. imageIndex 对应图片的顺序（从0开始）
@@ -161,7 +162,8 @@ export const SYSTEM_PROMPT_CROPPED = `你是一个教育资料智能识别专家
 6. content 字段中的换行符必须用 \\\\n 转义
 7. 不要在JSON前后添加任何其他内容
 8. **关键**：没有选项的题目绝不可能是选择题，必须根据内容特征正确判断题型
-9. **绝对不要输出任何图片URL或图片引用！**`;
+t9. 大题包含子题标号时必须拆分：每个subQuestion包含content、questionType、optionCount、optionContents、answer、analysis字段；父题content只保留第一个标号前的内容；如果答案或解析本身有子题结构，按对应标号拆分到各subQuestion；无法拆分的保留在空字符串
+10. **绝对不要输出任何图片URL或图片引用！**`;
 
 /**
  * AI Prompt 模板（智能识别模式 - 支持题目和答案识别）
@@ -213,6 +215,19 @@ export const SYSTEM_PROMPT_SMART = `你是教育资料智能识别专家。用�
 - 常见格式：横线"____"、下划线"___"、括号"(  )"、方框"□"等
 - 非填空题设为null
 
+### 4.6 大题子题结构化处理
+- 当 questionType 属于解答题、计算题、问答题、材料题、综合题、实验探究题、阅读理解、任务型阅读、完形填空等可能包含子题的大题时，**必须进行子题结构化拆分**。
+- 根据原卷中 "（1）"、"(1)"、"1."、"1．"、"1、"、"1)"、"1）"、"①②③" 等子题标号，把每个子题拆成独立的 subQuestion 对象。
+- 父题 content 只保留第一个子题标号之前的内容。
+- **每个 subQuestion 必须包含**：
+  - content：子题题干文本（去掉标号前缀，只保留题干内容）
+  - questionType：子题题型（根据子题内容推断：有A/B/C/D选项是单选题，只有两个选项是判断题，其余按特征判断）
+  - optionCount：如为选择题，统计选项个数（如4表示A-D，2表示判断题A-B），非选择题填 null
+  - optionContents：如为选择题，每个选项的内容填入对应字母 key，如 {"A":"选项A内容","B":"选项B内容"}
+  - answer：该子题的答案文本（如能从原文中识别到则填入，否则留空字符串）
+  - analysis：该子题的解析文本（如能从原文中识别到则填入，否则留空字符串）
+- subQuestions 固定返回空数组；不要把子题拆成独立对象。
+
 ### 5. 内容提取
 - **题目框**：提取完整题目文本（题号+题目描述+选项）
 - **答案框**：
@@ -228,6 +243,8 @@ export const SYSTEM_PROMPT_SMART = `你是教育资料智能识别专家。用�
 - "选A" → 答案：A，解析：无
 - "选A，因为..." → 答案：A，解析：因为...
 - "对" / "错" → 答案：对/错，解析：无
+- 如果同一段内容中同时出现答案和解析，必须拆分到 answer 和 analysis，不能只放在 content
+- 如果无法判断答案和解析边界，不要强行编造拆分；保留原始内容到 content，并让不确定的字段为空
 
 ## 重要约束
 1. **数学公式表示**：使用简单纯文本表示数学内容
@@ -282,6 +299,7 @@ export const SYSTEM_PROMPT_SMART = `你是教育资料智能识别专家。用�
       "questionType": "解答题",
       "optionCount": null,
       "content": "已知函数f(x)=ln(x^(-2)-x^2)\n(1)证明f(x)是偶函数\n(2)求f(x)的定义域",
+      "subQuestions": [],
       "confidence": 0.85
     }
   ],
@@ -299,6 +317,7 @@ export const SYSTEM_PROMPT_SMART = `你是教育资料智能识别专家。用�
 3. 题目框(type=question)必须包含questionType字段，可选值：单选题、多选题、判断题、填空题、问答题、解答题、计算题、材料题
 4. 选择题（单选题/多选题）必须包含optionCount字段，表示选项总数；非选择题optionCount设为null
 4.5. 填空题必须包含blankCount字段，表示需要填写的空位数；非填空题blankCount设为null
+t4.6. 大题子题必须结构化拆分：当父题包含子题标号时，必须拆分为独立subQuestion对象，父题content只保留第一个子题标号前的内容。每个subQuestion必须含content、根据子题内容推断questionType、如为选择题填写optionCount和optionContents、如有答案和解析填入对应字段否则留空
 5. 分离答案和解析，不要混合
 6. confidence表示识别置信度（0-1）
 7. 禁止输出图片URL或引用
@@ -328,11 +347,17 @@ export const SYSTEM_PROMPT_ANSWER_ONLY = `你是教育资料智能识别专家�
    - 原卷写了什么就提取什么，包括所有推导过程
 3. 如果图片中只有答案没有解析，analysis 设为空字符串
 4. 如果图片中只有解析没有明确答案标记，尝试从解析开头或结论处提取答案
+5. 如果图片中是大题答案/解析，并出现 "（1）"、"(1)"、"1."、"1、"、"①" 等子题标号，不要拆成 subQuestions；请保留在父级 answer/analysis 原文中
+6. 如果同一张裁剪图同时包含答案和解析，仍需要拆分到父级 answer 和 analysis；不要做子题级拆分
+7. subQuestions 固定返回空数组
+8. 如果裁剪图只有一类内容，或无法可靠判断答案/解析边界，不要强行拆分；保留原始文字到 content，并将无法确认的 answer 或 analysis 保持为空字符串
 
 ## 输出格式（严格JSON，不要其他内容）
 {
+  "content": "原始识别文字；如果无法可靠拆分答案和解析，请把原文放在这里",
   "answer": "A",
-  "analysis": "完整解析内容，逐字保留原卷文字..."
+  "analysis": "完整解析内容，逐字保留原卷文字...",
+  "subQuestions": []
 }
 
 ## 重要约束
@@ -347,7 +372,348 @@ export const SYSTEM_PROMPT_ANSWER_ONLY = `你是教育资料智能识别专家�
 2. **禁止LaTeX**：不要使用\\frac{}{}、\\sqrt{}{}、\\mathbf等LaTeX命令
 3. **转义换行**：内容中的换行用 \\n 表示
 4. 只输出JSON，不要有其他文字
-5. analysis字段必须**完整保留原卷解析内容**，不得精简摘要`;
+5. analysis字段必须**完整保留原卷解析内容**，不得精简摘要
+6. 不做子题答案解析结构化，subQuestions返回空数组`;
+
+export const SYSTEM_PROMPT_CONTENT_ONLY = `你是教育资料纯文字识别专家。用户会发送一张裁剪后的图片，可能包含题目的题干文字、选项内容、或答案解析区域的一部分。
+
+## 识别任务
+
+你的唯一任务是从图片中**逐字识别所有可见文字**，完整返回识别结果。不区分题目、答案、解析——看到什么就识别什么。
+
+### 规则
+1. 逐字识别图片中所有文字内容，不要遗漏
+2. 保持原始排版格式（换行、空格、标点）
+3. 如果是选项内容（如 A.xxx B.xxx C.xxx D.xxx），保持字母+内容的格式
+4. 不要提取或区分"答案""解析""题干"——全部作为 content 返回
+5. 不要进行答案匹配、不要判断题型、不要做结构化拆分
+6. answer 和 analysis 字段固定为空字符串，subQuestions 固定为空数组
+
+## 输出格式（严格JSON，不要其他内容）
+{
+  "content": "图片中所有文字内容",
+  "answer": "",
+  "analysis": "",
+  "subQuestions": []
+}
+
+## 重要约束
+1. **数学公式表示**：使用简单纯文本
+   * 分数：a/b 或 a÷b
+   * 上标：x^2, a^n
+   * 下标：x_1, a_n
+2. **禁止LaTeX**
+3. 只输出JSON，不要有其他文字`;
+
+// ========== 定向关联识别提示词（4份）==========
+
+/** P1: 图片模式 — 选项/子题题干识别 */
+export const SYSTEM_PROMPT_OPTIONS_CONTENT_IMAGE = `你是教育内容识别专家。用户框选了一个资料图片区域，请精准识别其中的文字内容，并按以下规则分类处理。
+
+## 处理规则
+
+### 规则1：存在选项标记
+如果识别到的文字包含选择题的选项标记（A. / A、/ (A) / ① / A) / A．/ ㈠ 等格式）或判断题标记（对/错、正确/错误、√/×、T/F）：
+- **hasOptions** 设为 true
+- 将内容按选项标号拆分为独立选项
+- 每个选项提取：**label**（标号本身，如 "A"/"B"/"对"/"错"/"①"/"②"）和 **content**（该选项对应的文字内容，不含标号）
+- 选项内容跨行时保持完整性
+- **plainContent** 填空字符串
+
+### 规则2：无选项标记
+如果识别到的文字不包含任何选项标记，仅为连续的文字内容：
+- **hasOptions** 设为 false
+- **plainContent** 填完整的识别文字（保留换行结构）
+- **options** 填空数组
+
+### 输出格式（严格JSON，不要其他内容）
+{
+  "hasOptions": true,
+  "options": [{"label": "A", "content": "该选项对应的文字内容"}],
+  "plainContent": ""
+}
+
+或
+
+{
+  "hasOptions": false,
+  "options": [],
+  "plainContent": "完整的文字内容"
+}
+
+### 约束
+1. 选项标号不限于ABCD，也可能是①②③④、对/错、√/×、T/F等
+2. label 只保留标号本身，不要附带标点（"."、"、"、"）"等）
+3. content 是该选项的实际文字，不含标号
+4. 数学公式使用纯文本：分数 a/b，上标 x^2，下标 x_1
+5. 禁止 LaTeX
+6. 只输出JSON`;
+
+/** P2: 编辑模式 — 选项/子题题干识别 */
+export const SYSTEM_PROMPT_OPTIONS_CONTENT_RECOGNIZE = `你是教育内容识别专家。用户框选了一个资料图片区域，请精准识别其中的文字内容，并将结果用于回填到题目编辑区。
+
+## 处理规则
+
+### 规则1：存在选项标记
+如果识别到的文字包含选择题选项标记（A. / A、/ (A) / ① / A) / A．/ ㈠ 等格式）或判断题标记（对/错、正确/错误、√/×、T/F）：
+- **hasOptions** 设为 true
+- 按选项标号将内容拆分为独立选项
+- 每个选项提取：**label**（标号本身）和 **content**（该选项的完整文字内容，跨行则合并）
+- **plainContent** 填空字符串
+
+### 规则2：无选项标记（纯题干/子题文字）
+如果识别到的文字不包含选项标记，是连续的题干或子题内容：
+- **hasOptions** 设为 false
+- **plainContent** 填完整文字（保留段落结构）
+- **options** 填空数组
+
+### 输出格式（严格JSON）
+{
+  "hasOptions": true,
+  "options": [{"label": "A", "content": "完整选项文字"}],
+  "plainContent": ""
+}
+
+或
+
+{
+  "hasOptions": false,
+  "options": [],
+  "plainContent": "完整题干/子题文字"
+}
+
+### 约束
+1. label 只保留标号本身，去掉附带的标点符号
+2. content 是选项的实际文字内容，不包含标号
+3. 跨行选项内容合并为完整文字
+4. 保留原文中关键信息（数字、公式符号、特殊字符）
+5. 数学公式使用纯文本，禁止LaTeX
+6. 只输出JSON`;
+
+/** P3: 编辑模式 — 答案/解析识别 */
+export const SYSTEM_PROMPT_ANSWER_ANALYSIS_RECOGNIZE = `你是教育内容识别专家。用户框选了一个资料图片区域，请识别其中的内容，判断是否同时包含"答案"和"解析"两部分，并按要求拆分。
+
+## 处理规则
+
+### 规则1：内容可区分出"答案"和"解析"
+如果识别到的文字中能明确区分为答案和解析两部分（常见特征："答案：xxx 解析：xxx" / "【答案】xxx 【解析】xxx" / 前半段为简洁答案、后半段为详细解释说明等）：
+- **hasSplit** 设为 true
+- **answer**：提取答案部分的纯文字（去除"答案：""【答案】"等标记词）
+- **analysis**：提取解析部分的纯文字（去除"解析：""【解析】"等标记词）
+- 答案通常较短（几个字/一个选项字母/一个数字），解析通常较长
+- 对于选择题，答案只返回选项字母（如 "A"）；对于判断题，返回 "对"/"错"；其他题型返回完整答案文字
+
+### 规则2：内容无法区分答案和解析
+如果识别到的文字是连续的、无法明确拆分出独立的答案和解析：
+- **hasSplit** 设为 false
+- **content** 填完整的识别文字
+
+### 输出格式（严格JSON）
+{
+  "hasSplit": true,
+  "answer": "答案文字",
+  "analysis": "解析文字",
+  "content": ""
+}
+
+或
+
+{
+  "hasSplit": false,
+  "answer": "",
+  "analysis": "",
+  "content": "完整文字内容"
+}
+
+### 边界情况
+- 只有"答案："标记而无"解析："标记 → answer 填答案内容，analysis 填空，hasSplit 为 true
+- 只有"解析："标记而无"答案："标记 → analysis 填解析内容，answer 填空，hasSplit 为 true
+- 答案和解析标记词本身不包含在返回内容中
+
+### 约束
+1. 数学公式使用纯文本，禁止LaTeX
+2. 只输出JSON`;
+
+/** P4: 图片模式 — 答案/解析识别 */
+export const SYSTEM_PROMPT_ANSWER_ANALYSIS_IMAGE = `你是教育内容识别专家。用户框选了一个资料图片区域，请识别其中的内容，判断是否包含"答案"和"解析"，并按以下规则返回。
+
+## 处理规则
+
+### 规则1：内容可区分出"答案"和"解析"
+如果识别到的文字中能明确区分为答案和解析两部分：
+- **hasSplit** 设为 true
+- **answer**：提取答案部分。**重要**——如果是选择题，答案只返回选项字母（如 "A"/"B"/"C"/"D"）；如果是判断题，返回 "对"/"错"；其他题型返回答案原文
+- **analysis**：提取解析部分的完整文字（去除标记词）
+- 答案部分通常很短（一个字母/一个词），解析部分通常较长
+
+### 规则2：内容无法区分答案和解析
+如果识别到的文字是连续的、无法拆分：
+- **hasSplit** 设为 false
+- **content** 填完整识别文字（通常整段都是解析说明）
+
+### 输出格式（严格JSON）
+{
+  "hasSplit": true,
+  "answer": "A",
+  "analysis": "解析文字内容",
+  "content": ""
+}
+
+或
+
+{
+  "hasSplit": false,
+  "answer": "",
+  "analysis": "",
+  "content": "完整文字内容"
+}
+
+### 约束
+1. 选择题答案必须只返回选项字母（A/B/C/D等），判断题返回"对"/"错"
+2. "答案：""解析："等标记词不包含在返回内容中
+3. 数学公式使用纯文本，禁止LaTeX
+4. 只输出JSON`;
+
+/** 图片模式 — 选项答案匹配 */
+export const SYSTEM_PROMPT_OPTION_ANSWER_MATCH = `你是教育内容识别专家。用户框选了试卷答案区域，请只判断其中是否包含选择题候选答案。
+
+## 任务
+只做 OCR 提取和候选项匹配，不要解题、不要推理、不要生成答案。
+
+## 匹配规则
+1. 如果图片中明确出现 A/B/C/D/E/F 等选项字母，提取最明确的一个选项字母。
+2. 支持常见格式："答案：B"、"选B"、"B"、"1.B"、"第1题 B"、"（B）"。
+3. 如果是判断题答案，"对/正确/是/√/✓" 视为 A，"错/错误/否/×/✕/✗" 视为 B。
+4. 如果图片中没有明确候选项，或同时出现多个无法判断哪个属于当前题目的候选项，matched 必须为 false。
+
+## 输出格式（严格JSON，不要其他内容）
+{
+  "matched": true,
+  "option": "B",
+  "rawText": "从图片中识别到的原文"
+}
+
+或
+
+{
+  "matched": false,
+  "option": "",
+  "rawText": "从图片中识别到的原文"
+}
+
+## 约束
+1. option 只能是单个大写字母 A-Z；判断题也按 A/B 返回。
+2. 不返回解析，不返回完整答案内容。
+3. 看不清或不确定时返回 matched:false。
+4. 只输出JSON`;
+
+/**
+ * 解析纯内容识别响应（contentOnly 模式）
+ */
+export function parseContentOnlyResponse(responseText: string): { content: string; answer: string; analysis: string; subQuestions: [] } | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      content: typeof parsed.content === 'string' ? parsed.content : '',
+      answer: '',
+      analysis: '',
+      subQuestions: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 选项/内容结构化识别的输出类型 */
+export interface OptionsContentResult {
+  hasOptions: boolean;
+  options: Array<{ label: string; content: string }>;
+  plainContent: string;
+}
+
+/** 答案/解析结构化识别的输出类型 */
+export interface AnswerAnalysisResult {
+  hasSplit: boolean;
+  answer: string;
+  analysis: string;
+  content: string;
+}
+
+/** 选项答案匹配输出类型 */
+export interface OptionAnswerMatchResult {
+  matched: boolean;
+  option: string;
+  rawText: string;
+}
+
+/**
+ * 解析选项/内容结构化识别响应（P1/P2 提示词输出）
+ */
+export function parseOptionsContentResponse(responseText: string): OptionsContentResult | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const hasOptions = parsed.hasOptions === true;
+    return {
+      hasOptions,
+      options: Array.isArray(parsed.options)
+        ? parsed.options
+            .filter((o: any) => o && typeof o.label === 'string' && typeof o.content === 'string')
+            .map((o: any) => ({ label: o.label.trim(), content: o.content.trim() }))
+        : [],
+      plainContent: typeof parsed.plainContent === 'string' ? parsed.plainContent.trim() : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析答案/解析结构化识别响应（P3/P4 提示词输出）
+ */
+export function parseAnswerAnalysisResponse(responseText: string): AnswerAnalysisResult | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    return {
+      hasSplit: parsed.hasSplit === true,
+      answer: typeof parsed.answer === 'string' ? parsed.answer.trim() : '',
+      analysis: typeof parsed.analysis === 'string' ? parsed.analysis.trim() : '',
+      content: typeof parsed.content === 'string' ? parsed.content.trim() : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析选项答案匹配响应
+ */
+export function parseOptionAnswerMatchResponse(responseText: string): OptionAnswerMatchResult | null {
+  try {
+    const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    const rawOption = typeof parsed.option === 'string' ? parsed.option.trim().toUpperCase() : '';
+    return {
+      matched: parsed.matched === true && /^[A-Z]$/.test(rawOption),
+      option: /^[A-Z]$/.test(rawOption) ? rawOption : '',
+      rawText: typeof parsed.rawText === 'string' ? parsed.rawText.trim() : '',
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 构建用户消息（裁剪模式）
@@ -490,13 +856,9 @@ export function parseCroppedAIResponse(responseText: string): Array<{
 
     // 清理每个问题的content字段，移除图片URL引用
     result.questions = result.questions.map((q: any) => {
-      if (q.content && typeof q.content === 'string') {
-        // 移除图片URL引用，包括但不限于：
-        // - "Image: [url]"
-        // - "图片: url"
-        // - "图x: url"
-        // - 任何http/https URL
-        let cleanedContent = q.content
+      const cleanText = (value: unknown): string => {
+        if (value === null || value === undefined) return '';
+        return String(value)
           .replace(/Image:\s*\[[^\]]*\]/gi, '')
           .replace(/图片[:：]\s*[^\s\n]+/gi, '')
           .replace(/图\d+[:：]\s*[^\s\n]+/gi, '')
@@ -504,6 +866,15 @@ export function parseCroppedAIResponse(responseText: string): Array<{
           .replace(/\[图片\]/g, '')
           .replace(/\[image\]/gi, '')
           .trim();
+      };
+
+      if (q.content && typeof q.content === 'string') {
+        // 移除图片URL引用，包括但不限于：
+        // - "Image: [url]"
+        // - "图片: url"
+        // - "图x: url"
+        // - 任何http/https URL
+        let cleanedContent = cleanText(q.content);
 
         // 如果清理后内容为空，保留原始内容但添加提示
         if (!cleanedContent) {
@@ -513,6 +884,7 @@ export function parseCroppedAIResponse(responseText: string): Array<{
 
         q.content = cleanedContent;
       }
+      q.subQuestions = [];
       return q;
     });
 
@@ -526,9 +898,14 @@ export function parseCroppedAIResponse(responseText: string): Array<{
 
 /**
  * 解析答案匹配专用 AI 响应
- * 返回 { answer: string, analysis: string }
+ * 返回 { answer: string, analysis: string, subQuestions?: [...] }
  */
-export function parseAnswerOnlyResponse(responseText: string): { answer: string; analysis: string } | null {
+export function parseAnswerOnlyResponse(responseText: string): {
+  content?: string;
+  answer: string;
+  analysis: string;
+  subQuestions?: Array<{ answer?: string; analysis?: string; content?: string }>;
+} | null {
   try {
     // 尝试直接解析 JSON
     const cleaned = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
@@ -536,10 +913,16 @@ export function parseAnswerOnlyResponse(responseText: string): { answer: string;
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]);
-    if (typeof parsed.answer === 'string' && typeof parsed.analysis === 'string') {
+    if (
+      typeof parsed.answer === 'string' ||
+      typeof parsed.analysis === 'string' ||
+      typeof parsed.content === 'string'
+    ) {
       return {
-        answer: parsed.answer || '',
-        analysis: parsed.analysis || '',
+        content: parsed.content === undefined || parsed.content === null ? '' : String(parsed.content),
+        answer: parsed.answer === undefined || parsed.answer === null ? '' : String(parsed.answer),
+        analysis: parsed.analysis === undefined || parsed.analysis === null ? '' : String(parsed.analysis),
+        subQuestions: [],
       };
     }
     return null;
@@ -756,7 +1139,7 @@ export function generateMatchedQuestions(
       // 未匹配到识别结果，创建待确认的题目
       questions.push({
         id: questionId++,
-        number: questions.length + 1,
+        number: 0,
         questionBoxId: box.id,
         questionBox: box,
         pageNumber: box.pageNumber,
@@ -812,7 +1195,7 @@ export function generateMatchedQuestions(
 
     questions.push({
       id: questionId++,
-      number: matchedBlock.questionNumber || questions.length + 1,
+      number: matchedBlock.questionNumber ?? 0,
       questionBoxId: box.id,
       questionBox: box,
       pageNumber: box.pageNumber,
@@ -832,8 +1215,14 @@ export function generateMatchedQuestions(
     });
   }
 
-  // 按题号排序
-  questions.sort((a, b) => a.number - b.number);
+  // 按真实题号排序；未识别题号的题目保持原识别顺序并排在有效题号之后
+  questions.sort((a, b) => {
+    const aValid = Number.isFinite(a.number) && a.number > 0;
+    const bValid = Number.isFinite(b.number) && b.number > 0;
+    if (aValid && bValid) return a.number - b.number;
+    if (aValid !== bValid) return aValid ? -1 : 1;
+    return a.id - b.id;
+  });
 
   // 重新分配 ID
   questions.forEach((q, index) => {
@@ -1078,6 +1467,15 @@ export function smartMatchQuestionsAndAnswers(
     questionType?: string;
     optionCount?: number | null;
     blankCount?: number | null;
+    subQuestions?: Array<{
+      id?: number;
+      questionType?: string;
+      content: string;
+      answer?: string;
+      analysis?: string;
+      optionCount?: number | null;
+      blankCount?: number | null;
+    }>;
     content: string;
     answer?: string;
     analysis?: string;
@@ -1097,6 +1495,15 @@ export function smartMatchQuestionsAndAnswers(
     content: string;
     answer: string;
     analysis: string;
+    subQuestions?: Array<{
+      id?: number;
+      questionType?: string;
+      content: string;
+      answer?: string;
+      analysis?: string;
+      optionCount?: number | null;
+      blankCount?: number | null;
+    }>;
     boxId: string;
     croppedImageData?: string;
   }>;
@@ -1111,6 +1518,15 @@ export function smartMatchQuestionsAndAnswers(
     questionNumber: number;
     answer: string;
     analysis: string;
+    subQuestions?: Array<{
+      id?: number;
+      questionType?: string;
+      content: string;
+      answer?: string;
+      analysis?: string;
+      optionCount?: number | null;
+      blankCount?: number | null;
+    }>;
     boxId: string;
   }>;
 } {
@@ -1122,6 +1538,15 @@ export function smartMatchQuestionsAndAnswers(
     content: string;
     answer: string;
     analysis: string;
+    subQuestions?: Array<{
+      id?: number;
+      questionType?: string;
+      content: string;
+      answer?: string;
+      analysis?: string;
+      optionCount?: number | null;
+      blankCount?: number | null;
+    }>;
     boxId: string;
     croppedImageData?: string;
   }> = [];
@@ -1162,7 +1587,7 @@ export function smartMatchQuestionsAndAnswers(
       
       questions.push({
         id: questions.length + 1,
-        number: region.questionNumber || questions.length + 1,
+        number: region.questionNumber ?? 0,
         questionBoxId: boxId,
         questionBox: box,
         pageNumber: box?.pageNumber || 1,
@@ -1170,6 +1595,7 @@ export function smartMatchQuestionsAndAnswers(
         questionType: (region.questionType || inferQuestionTypeFromContent(region.content || '')) as MatchedQuestion['questionType'],
         optionCount: region.optionCount ?? undefined,
         blankCount: region.blankCount ?? undefined,
+        subQuestions: region.subQuestions && region.subQuestions.length > 0 ? region.subQuestions : undefined,
         answerSource: 'manual',
         status: 'no_answer',
         showRecognizedContent: false,
@@ -1186,6 +1612,7 @@ export function smartMatchQuestionsAndAnswers(
           content: typeof region.content === 'string' ? region.content : JSON.stringify(region.content),
           answer: typeof region.answer === 'string' ? region.answer : String(region.answer || ''),
           analysis: typeof region.analysis === 'string' ? region.analysis : String(region.analysis || ''),
+          subQuestions: [],
           boxId,
           croppedImageData: croppedImages.get(boxId),
         });
@@ -1200,6 +1627,15 @@ export function smartMatchQuestionsAndAnswers(
     questionNumber: number;
     answer: string;
     analysis: string;
+    subQuestions?: Array<{
+      id?: number;
+      questionType?: string;
+      content: string;
+      answer?: string;
+      analysis?: string;
+      optionCount?: number | null;
+      blankCount?: number | null;
+    }>;
     boxId: string;
   }> = [];
 
@@ -1207,11 +1643,15 @@ export function smartMatchQuestionsAndAnswers(
     // 构建已有题目的查找表（包含子题）
     const existingQuestionMap = new Map<number, { id: number; hasAnswer: boolean; isSub: boolean }>();
     for (const eq of existingQuestions) {
-      existingQuestionMap.set(eq.number, { id: eq.id, hasAnswer: eq.hasAnswer, isSub: false });
+      if (Number.isFinite(eq.number) && eq.number > 0) {
+        existingQuestionMap.set(eq.number, { id: eq.id, hasAnswer: eq.hasAnswer, isSub: false });
+      }
       // 子题也加入查找表
       if (eq.subQuestions) {
         for (const sq of eq.subQuestions) {
-          existingQuestionMap.set(sq.number, { id: sq.id, hasAnswer: sq.hasAnswer, isSub: true });
+          if (Number.isFinite(sq.number) && sq.number > 0) {
+            existingQuestionMap.set(sq.number, { id: sq.id, hasAnswer: sq.hasAnswer, isSub: true });
+          }
         }
       }
     }
@@ -1230,6 +1670,7 @@ export function smartMatchQuestionsAndAnswers(
           questionNumber: region.questionNumber,
           answer: typeof region.answer === 'string' ? region.answer : String(region.answer || ''),
           analysis: typeof region.analysis === 'string' ? region.analysis : String(region.analysis || ''),
+          subQuestions: [],
           boxId: box?.id || `box-${region.imageIndex}`,
         });
         // 从 answerMap 中移除已预匹配的（避免重复）
@@ -1241,7 +1682,9 @@ export function smartMatchQuestionsAndAnswers(
 
   // 2. 关联答案
   for (const question of questions) {
-    const answerRegion = answerMap.get(question.number);
+    const answerRegion = Number.isFinite(question.number) && question.number > 0
+      ? answerMap.get(question.number)
+      : undefined;
     if (answerRegion) {
       question.answer = typeof answerRegion.answer === 'string' ? answerRegion.answer : String(answerRegion.answer || '');
       question.analysis = typeof answerRegion.analysis === 'string' ? answerRegion.analysis : String(answerRegion.analysis || '');
@@ -1260,6 +1703,7 @@ export function smartMatchQuestionsAndAnswers(
       content: typeof region.content === 'string' ? region.content : JSON.stringify(region.content),
       answer: typeof region.answer === 'string' ? region.answer : String(region.answer || ''),
       analysis: typeof region.analysis === 'string' ? region.analysis : String(region.analysis || ''),
+      subQuestions: [],
       boxId: box?.id || `box-${region.imageIndex}`,
       croppedImageData: croppedImages.get(box?.id || `box-${region.imageIndex}`),
     });
@@ -1332,6 +1776,16 @@ export function parseSmartAIResponse(responseText: string): Array<{
   questionType?: string;
   optionCount?: number | null;
   blankCount?: number | null;
+  subQuestions?: Array<{
+    id?: number;
+    questionType?: string;
+    content: string;
+    answer?: string;
+    analysis?: string;
+    optionCount?: number | null;
+    optionContents?: Record<string, string>;
+    blankCount?: number | null;
+  }>;
   content: string;
   answer?: string;
   analysis?: string;
@@ -1581,6 +2035,7 @@ export function parseSmartAIResponse(responseText: string): Array<{
           region.questionType = inferQuestionTypeFromContent(region.content || '');
         }
         region.optionCount = region.optionCount ?? null;
+        if (!region.subQuestions || !Array.isArray(region.subQuestions) || region.subQuestions.length === 0) { region.subQuestions = []; }
       }
       return region;
     });

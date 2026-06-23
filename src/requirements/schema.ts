@@ -128,4 +128,6 @@ export interface RequirementRegistry {
   excludedDecisions: ExcludedDecision[];
   /** 中文名称：展示序号排序；用途：覆盖右侧面板的默认注册表顺序；使用方：Skill4 */
   displayOrder?: string[];
+  /** 中文名称：展示序号映射；用途：强制指定每个需求ID的显示序号；使用方：Skill4 */
+  displayNumberMap?: Record<string, number>;
 }

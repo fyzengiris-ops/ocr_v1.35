@@ -103,9 +103,23 @@ export const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGr
         'REVIEW_STEP-013',
         'REVIEW_STEP-014',
         'REVIEW_STEP-007',
+        'REVIEW_STEP-017',
         'REVIEW_STEP-012',
         'REVIEW_STEP-008',
         'REVIEW_STEP-009',
+        'REVIEW_STEP-033',
+      ],
+    },
+    {
+      id: 'single-mode-question-types',
+      title: '仅识别题目：按题型核对',
+      requirementIds: [
+        'REVIEW_STEP-021',
+        'REVIEW_STEP-022',
+        'REVIEW_STEP-023',
+        'REVIEW_STEP-024',
+        'REVIEW_STEP-025',
+        'REVIEW_STEP-026',
       ],
     },
     {
@@ -113,14 +127,20 @@ export const requirementDisplayGroupConfigs: Record<string, RequirementDisplayGr
       title: '题目+答案模式',
       requirementIds: [
         'REVIEW_STEP-001',
-        'REVIEW_STEP-003',
         'REVIEW_STEP-015',
         'REVIEW_STEP-016',
-        'REVIEW_STEP-017',
-        'REVIEW_STEP-005',
-        'REVIEW_STEP-018',
-        'REVIEW_STEP-004',
-        'REVIEW_STEP-020',
+      ],
+    },
+    {
+      id: 'question-answer-mode-question-types',
+      title: '题目+答案：按题型核对',
+      requirementIds: [
+        'REVIEW_STEP-027',
+        'REVIEW_STEP-028',
+        'REVIEW_STEP-029',
+        'REVIEW_STEP-030',
+        'REVIEW_STEP-031',
+        'REVIEW_STEP-032',
       ],
     },
   ],
@@ -194,7 +214,8 @@ export function getRequirementDisplayGroups(registry: RequirementRegistry, extra
     ];
   }
 
-  const requirementsById = createRequirementMap(registry.requirements);
+  const visibleRequirements = registry.requirements.filter((requirement) => requirement.visibleInPanel !== false);
+  const requirementsById = createRequirementMap(visibleRequirements);
   const usedRequirementIds = new Set<string>();
   const groups = groupConfigs
     .map((groupConfig) => {
@@ -212,7 +233,7 @@ export function getRequirementDisplayGroups(registry: RequirementRegistry, extra
     })
     .filter((group) => group.requirements.length > 0);
 
-  const uncategorizedRequirements = registry.requirements.filter(
+  const uncategorizedRequirements = visibleRequirements.filter(
     (requirement) => !usedRequirementIds.has(requirement.id),
   );
 

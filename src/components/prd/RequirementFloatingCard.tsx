@@ -198,22 +198,39 @@ export function RequirementFloatingCard({
           </ol>
         </section>
 
-        <section>
-          <h4 className="text-xs font-semibold text-gray-900">操作说明</h4>
-          <ol className="mt-2 space-y-2">
-            {operationSections.map((section) => (
-              <li key={section.category} className="flex gap-2">
-                <span className="mt-0.5 text-[11px] font-semibold text-emerald-700">
-                  {operationSections.indexOf(section) + 1}、
-                </span>
-                <div>
-                  <div className="font-medium text-gray-800">{section.category}</div>
-                  <SectionValue value={section.content} />
+        {operationSections.length > 0 && (
+          <section>
+            <h4 className="text-xs font-semibold text-gray-900">操作说明</h4>
+            <ol className="mt-2 space-y-2">
+              {operationSections.map((section) => (
+                <li key={section.category} className="flex gap-2">
+                  <span className="mt-0.5 text-[11px] font-semibold text-emerald-700">
+                    {operationSections.indexOf(section) + 1}、
+                  </span>
+                  <div>
+                    <div className="font-medium text-gray-800">{section.category}</div>
+                    <SectionValue value={section.content} />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {requirement.aiPrompts?.length ? (
+          <section>
+            <h4 className="text-xs font-semibold text-gray-900">AI 提示词</h4>
+            <div className="mt-2 space-y-2">
+              {requirement.aiPrompts.map((item) => (
+                <div key={item.title} className="rounded border border-gray-200 p-2">
+                  <div className="font-medium text-gray-800">{item.title}</div>
+                  <div className="mt-1 text-gray-500">{item.trigger}</div>
+                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-[11px] leading-4">{item.prompt}</pre>
+                  <div className="mt-1 text-gray-600">回填：{item.result}</div>
                 </div>
-              </li>
-            ))}
-          </ol>
-        </section>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <div className="pointer-events-none absolute bottom-1 right-1 h-3 w-3 border-b-2 border-r-2 border-emerald-300" />

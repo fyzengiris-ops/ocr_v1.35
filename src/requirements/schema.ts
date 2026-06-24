@@ -72,6 +72,8 @@ export interface RequirementItem {
   changeType?: RequirementChangeType;
   /** 中文名称：变更日期；用途：本次变更日期标注，如"6.2"；Skill3 在悬浮面板显示 [日期] 格式；使用方：Skill3 */
   changeDate?: string;
+  /** 中文名称：是否在用户侧需求入口展示；用途：保留稳定需求记录但隐藏已迁移的重复说明；使用方：Skill3、Skill4 */
+  visibleInPanel?: boolean;
   /** 中文名称：对象类型；用途：标识需求对应对象；使用方：Skill3、Skill4 */
   objectType: RequirementObjectType;
   /** 中文名称：对象名称；用途：页面上的具体对象名称；使用方：Skill3、Skill4 */
@@ -92,6 +94,8 @@ export interface RequirementItem {
   display: RequirementDisplay;
   /** 中文名称：操作说明；用途：描述操作、权限、数据流转、异常情况；使用方：Skill3、Skill4 */
   operation: RequirementOperation;
+  /** 中文名称：AI 提示词；用途：按识别场景展示实际调用的提示词模板、触发条件和回填目标；使用方：Skill3、Skill4 */
+  aiPrompts?: Array<{ title: string; trigger: string; prompt: string; result: string }>;
   /** 中文名称：验收标准；用途：验证需求是否实现；使用方：Skill4、测试 */
   acceptance: string[];
   /** 中文名称：来源信息；用途：追溯需求来自哪里；使用方：Skill2、Skill4 */

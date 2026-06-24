@@ -1386,8 +1386,41 @@ interface SubQuestion {
 
 // ========== 子题自动拆分（识别模式）==========
 
-/** 子题标记正则：匹配 (1) (2) / （1）（2） / ① ② ③ 等 */
-const SUB_Q_MARKERS = /\((\d+)\)[\s、.。,，]|（(\d+)）[\s、.。,，]|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/g;
+/**
+ * 子题标记：兼容理科解答题和英语阅读理解常见编号。
+ * 括号编号可出现在同一行；裸数字编号限定在行首，避免把题干中的普通数字误判为子题。
+ */
+const SUB_Q_MARKERS = /\((\d{1,2})\)[\s、.。，，:：]?|（(\d{1,2})）[\s、.。，，:：]?|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|(?:^|[\r\n])\s*(\d{1,2})\s*[.．、)）]/gm;
+const CIRCLED_SUB_NUMBERS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+
+function splitChoiceContent(content: string): { stem: string; optionContents: Record<string, string>; optionCount: number } | null {
+  const optionMarkers = /(?:^|[\r\n]|\s)([A-Z])\s*[.．、:：]/g;
+  const matches: Array<{ letter: string; start: number; contentStart: number }> = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = optionMarkers.exec(content)) !== null) {
+    const letter = match[1];
+    if (!letter || matches.some((item) => item.letter === letter)) continue;
+    matches.push({ letter, start: match.index, contentStart: match.index + match[0].length });
+  }
+
+  if (matches.length < 2 || matches[0].letter !== 'A') return null;
+
+  const expectedLetters = OPTION_LETTERS.slice(0, matches.length).split('');
+  if (!matches.every((item, index) => item.letter === expectedLetters[index])) return null;
+
+  const optionContents: Record<string, string> = {};
+  matches.forEach((item, index) => {
+    const nextStart = matches[index + 1]?.start ?? content.length;
+    optionContents[item.letter] = content.slice(item.contentStart, nextStart).trim();
+  });
+
+  return {
+    stem: content.slice(0, matches[0].start).trim(),
+    optionContents,
+    optionCount: matches.length,
+  };
+}
 
 /**
  * 从文本中检测并拆分子题
@@ -1407,8 +1440,9 @@ function splitSubQuestionsFromText(
   SUB_Q_MARKERS.lastIndex = 0; // 重置正则
 
   while ((match = SUB_Q_MARKERS.exec(content)) !== null) {
-    const circledIndex = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'.indexOf(match[0].trim()[0]);
-    const num = match[1] || match[2] || (circledIndex >= 0 ? String(circledIndex + 1) : '');
+    const markerText = match[0].trim();
+    const circledIndex = CIRCLED_SUB_NUMBERS.indexOf(markerText[0]);
+    const num = match[1] || match[2] || match[3] || (circledIndex >= 0 ? String(circledIndex + 1) : '');
     markers.push({
       index: markers.length,
       pos: match.index,
@@ -1417,8 +1451,11 @@ function splitSubQuestionsFromText(
     });
   }
 
-  // 至少需要2个子题标记才触发拆分
-  if (markers.length < 2) return [];
+  // 至少需要两个连续编号才触发拆分，避免将正文普通数字误判为子题。
+  const hasContinuousSequence = markers.some((marker, index) =>
+    index > 0 && Number(marker.num) === Number(markers[index - 1].num) + 1
+  );
+  if (markers.length < 2 || !hasContinuousSequence) return [];
 
   // 按标记拆分内容
   const subs: SubQuestion[] = [];
@@ -1432,14 +1469,17 @@ function splitSubQuestionsFromText(
     // 尝试拆分答案和解析（多策略智能拆分，传入总标记数用于均分兜底）
     const [subAnswer, subAnalysis] = splitAnswerAnalysisByMarker(answer, analysis, m.num, i, markers.length);
 
+    const resolvedType = resolveQuestionType(undefined, subContent, validTypes);
+    const choiceStructure = isChoiceType(resolvedType) ? splitChoiceContent(subContent) : null;
+
     subs.push({
       id: Date.now() + i,
-      questionType: resolveQuestionType(undefined, subContent, validTypes),
-      content: subContent,
+      questionType: resolvedType,
+      content: choiceStructure?.stem || subContent,
       answer: subAnswer,
       analysis: subAnalysis,
-      optionCount: 4,
-      optionContents: {},
+      optionCount: choiceStructure?.optionCount || getOptionCountForType(resolvedType, undefined),
+      optionContents: choiceStructure?.optionContents || buildOptionContents(resolvedType, getOptionCountForType(resolvedType, undefined)),
       blankCount: 1,
       blankAnswers: [],
     });

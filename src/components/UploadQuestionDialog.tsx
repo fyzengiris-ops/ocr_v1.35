@@ -132,17 +132,26 @@ const reviewStepRequirementIds = [
   'REVIEW_STEP-013',
   'REVIEW_STEP-014',
   'REVIEW_STEP-007',
+  'REVIEW_STEP-017',
   'REVIEW_STEP-012',
   'REVIEW_STEP-008',
   'REVIEW_STEP-009',
+  'REVIEW_STEP-033',
+  'REVIEW_STEP-021',
+  'REVIEW_STEP-022',
+  'REVIEW_STEP-023',
+  'REVIEW_STEP-024',
+  'REVIEW_STEP-025',
+  'REVIEW_STEP-026',
   'REVIEW_STEP-001',
-  'REVIEW_STEP-003',
   'REVIEW_STEP-015',
   'REVIEW_STEP-016',
-  'REVIEW_STEP-017',
-  'REVIEW_STEP-005',
-  'REVIEW_STEP-018',
-  'REVIEW_STEP-004',
+  'REVIEW_STEP-027',
+  'REVIEW_STEP-028',
+  'REVIEW_STEP-029',
+  'REVIEW_STEP-030',
+  'REVIEW_STEP-031',
+  'REVIEW_STEP-032',
 ];
 
 function getActiveUploadDialogRequirementIds(flowStep: FlowStep) {
@@ -1889,8 +1898,6 @@ export function UploadQuestionDialog({
   );
   const choiceQuestionTypes = validQuestionTypes.filter(isChoiceType);
   const isEnglishSubject = subjectInfo?.includes('英语') ?? false;
-  const isReadingChoiceSubQuestion = (parentType: string, subType: string) =>
-    isEnglishSubject && parentType === '阅读理解' && subType === '单选题';
 
   // ==================== 工作模式和流程阶段 ====================
   const [workMode, setWorkMode] = useState<WorkMode | null>(null);       // 选择的工作模式
@@ -5759,7 +5766,7 @@ export function UploadQuestionDialog({
   };
 
   const buildNewSubQuestion = (parentQuestionType: string, newSubId: number, optionCount = DEFAULT_CHOICE_OPTION_COUNT): SubQuestion => {
-    const defaultType = isEnglishSubject && (parentQuestionType === '完形填空' || parentQuestionType === '阅读理解')
+    const defaultType = isEnglishSubject && parentQuestionType === '完形填空'
       ? '单选题'
       : resolveQuestionType(undefined, '', validQuestionTypes);
     const resolvedOptionCount = getOptionCountForType(defaultType, optionCount);
@@ -5804,7 +5811,7 @@ export function UploadQuestionDialog({
       }
 
       let nextId = subQuestions.length > 0 ? Math.max(...subQuestions.map(s => s.id)) + 1 : 1;
-      const inheritedOptionCount = q.questionType === '完形填空' || q.questionType === '阅读理解'
+      const inheritedOptionCount = q.questionType === '完形填空'
         ? (subQuestions[0]?.optionCount || q.optionCount || DEFAULT_CHOICE_OPTION_COUNT)
         : DEFAULT_CHOICE_OPTION_COUNT;
       while (subQuestions.length < clampedCount) {
@@ -6047,7 +6054,7 @@ export function UploadQuestionDialog({
       const subQuestions = [...(q.subQuestions || [])];
       const newSubId = subQuestions.length > 0 ? Math.max(...subQuestions.map(s => s.id)) + 1 : 1;
       const insertAt = afterIndex !== undefined ? afterIndex + 1 : subQuestions.length;
-      const inheritedOptionCount = q.questionType === '完形填空' || q.questionType === '阅读理解'
+      const inheritedOptionCount = q.questionType === '完形填空'
         ? (subQuestions[0]?.optionCount || q.optionCount || DEFAULT_CHOICE_OPTION_COUNT)
         : DEFAULT_CHOICE_OPTION_COUNT;
       subQuestions.splice(Math.min(insertAt, subQuestions.length), 0, buildNewSubQuestion(q.questionType, newSubId, inheritedOptionCount));
@@ -7855,7 +7862,10 @@ export function UploadQuestionDialog({
                     {renderRequirementMarker('REVIEW_STEP-006', 'right-0 -top-2', 1)}
                     <button onClick={() => handleModeChange('image')} className={cn("px-3 py-1 rounded text-sm", viewMode === 'image' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600')}>图片模式</button>
                   </span>
-                  <button onClick={() => handleModeChange('recognize')} className={cn("px-3 py-1 rounded text-sm", viewMode === 'recognize' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600')}>编辑模式</button>
+                  <span data-req-anchor="review-step-ai-prompts" className="relative inline-flex">
+                    {renderRequirementMarker('REVIEW_STEP-033', 'right-0 -top-2')}
+                    <button onClick={() => handleModeChange('recognize')} className={cn("px-3 py-1 rounded text-sm", viewMode === 'recognize' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600')}>编辑模式</button>
+                  </span>
                 </div>
                 {viewMode === 'recognize' && <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded">请注意甄别AI识别内容</span>}
               </div>
@@ -7920,8 +7930,34 @@ export function UploadQuestionDialog({
                     const isQuestionFillBlank = isFillBlankType(question.questionType);
                     const isQuestionCompound = compoundQuestionTypes.includes(question.questionType);
                     const isEnglishClozeQuestion = isEnglishSubject && question.questionType === '完形填空';
-                    const isEnglishReadingQuestion = isEnglishSubject && question.questionType === '阅读理解';
-                    const isEnglishSpecialSubCountQuestion = isEnglishClozeQuestion || isEnglishReadingQuestion;
+                    const isEnglishSpecialSubCountQuestion = isEnglishClozeQuestion;
+                    const getQuestionTypeRuleRequirementId = (questionType: string) => {
+                      const isQuestionOnly = workMode === 'questions-only';
+                      if (isEnglishSubject && questionType === '完形填空') return isQuestionOnly ? 'REVIEW_STEP-025' : 'REVIEW_STEP-031';
+                      if (isEnglishSubject && questionType === '阅读理解') return isQuestionOnly ? 'REVIEW_STEP-026' : 'REVIEW_STEP-032';
+                      if (questionType === '判断题') return isQuestionOnly ? 'REVIEW_STEP-022' : 'REVIEW_STEP-028';
+                      if (isFillBlankType(questionType)) return isQuestionOnly ? 'REVIEW_STEP-023' : 'REVIEW_STEP-029';
+                      if (compoundQuestionTypes.includes(questionType) || questionType === '解答题') return isQuestionOnly ? 'REVIEW_STEP-024' : 'REVIEW_STEP-030';
+                      return isQuestionOnly ? 'REVIEW_STEP-021' : 'REVIEW_STEP-027';
+                    };
+                    const questionTypeRuleRequirementId = getQuestionTypeRuleRequirementId(question.questionType);
+                    const questionTypeRuleAnchorId = {
+                      'REVIEW_STEP-021': 'review-step-type-question-only-choice',
+                      'REVIEW_STEP-022': 'review-step-type-question-only-judge',
+                      'REVIEW_STEP-023': 'review-step-type-question-only-fill',
+                      'REVIEW_STEP-024': 'review-step-type-question-only-solution',
+                      'REVIEW_STEP-025': 'review-step-type-question-only-cloze',
+                      'REVIEW_STEP-026': 'review-step-type-question-only-reading',
+                      'REVIEW_STEP-027': 'review-step-type-question-answer-choice',
+                      'REVIEW_STEP-028': 'review-step-type-question-answer-judge',
+                      'REVIEW_STEP-029': 'review-step-type-question-answer-fill',
+                      'REVIEW_STEP-030': 'review-step-type-question-answer-solution',
+                      'REVIEW_STEP-031': 'review-step-type-question-answer-cloze',
+                      'REVIEW_STEP-032': 'review-step-type-question-answer-reading',
+                    }[questionTypeRuleRequirementId];
+                    const isFirstQuestionForTypeRule = question.id === questions.find(
+                      (candidate) => getQuestionTypeRuleRequirementId(candidate.questionType) === questionTypeRuleRequirementId,
+                    )?.id;
                     const parentOptionCount = getOptionCountForType(question.questionType, question.optionCount);
                     const unifiedSubOptionCount = question.subQuestions?.[0]?.optionCount || question.optionCount || DEFAULT_CHOICE_OPTION_COUNT;
                     const hasParentStructureOperation =
@@ -7986,11 +8022,8 @@ export function UploadQuestionDialog({
                               questionIndex === 0 && 'pl-8',
                             )}
                           >
-                            {questionIndex === 0 &&
-                              renderRequirementMarker(
-                                workMode === 'questions-only' ? 'REVIEW_STEP-002' : 'REVIEW_STEP-003',
-                                'left-0 -top-2',
-                              )}
+                            {questionIndex === 0 && workMode === 'questions-only' &&
+                              renderRequirementMarker('REVIEW_STEP-002', 'left-0 -top-2')}
                             {question.number < 0 ? (
                               <span className="text-sm font-medium text-orange-600">未关联答案</span>
                             ) : editingQuestionId === question.id ? (
@@ -8151,6 +8184,11 @@ export function UploadQuestionDialog({
                           >
                             {!hasParentStructureOperation && question.id === firstQuestionWithTypeSelectorId &&
                               renderRequirementMarker('REVIEW_STEP-017', 'right-0 -top-3')}
+                            {isFirstQuestionForTypeRule && !hasParentStructureOperation && (
+                              <span data-req-anchor={questionTypeRuleAnchorId} className="relative inline-flex">
+                                {renderRequirementMarker(questionTypeRuleRequirementId, '-right-3 -top-3')}
+                              </span>
+                            )}
                             <select value={question.questionType} onChange={(e) => handleUpdateQuestionType(question.id, e.target.value)} className="px-2 py-1 text-xs border rounded bg-white">
                               {questionTypes.map(type => (<option key={type} value={type}>{type}</option>))}
                             </select>
@@ -8381,6 +8419,11 @@ export function UploadQuestionDialog({
                           >
                             {hasParentStructureOperation && question.id === firstQuestionWithTypeSelectorId &&
                               renderRequirementMarker('REVIEW_STEP-017', 'right-1 -top-3')}
+                            {isFirstQuestionForTypeRule && (
+                              <span data-req-anchor={questionTypeRuleAnchorId}>
+                                {renderRequirementMarker(questionTypeRuleRequirementId, 'right-1 -top-3')}
+                              </span>
+                            )}
                             {isEnglishSpecialSubCountQuestion && (
                               <CountControl
                                 label="子题数"
@@ -8443,8 +8486,6 @@ export function UploadQuestionDialog({
                             data-req-anchor={question.id === firstCompactSubQuestionSummaryQuestionId ? 'review-step-compact-subquestion-summary' : undefined}
                             className="relative rounded-lg border-2 border-emerald-300 bg-emerald-50 p-2.5 shadow-sm"
                           >
-                            {question.id === firstCompactSubQuestionSummaryQuestionId &&
-                              renderRequirementMarker('REVIEW_STEP-020', 'right-1 -top-3')}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                               {(question.subQuestions || []).map((sub, subIndex) => {
                                 const subOptionCount = getOptionCountForType(sub.questionType, sub.optionCount);
@@ -8453,8 +8494,7 @@ export function UploadQuestionDialog({
                                   questionViewMode === 'image' &&
                                   choiceQuestionTypes.includes(sub.questionType) &&
                                   sub.questionType !== '判断题' &&
-                                  !isEnglishClozeQuestion &&
-                                  !isEnglishReadingQuestion;
+                                  !isEnglishClozeQuestion;
                                 const allowSubBlankCount =
                                   workMode === 'questions-only' &&
                                   questionViewMode === 'image' &&
@@ -8660,8 +8700,6 @@ export function UploadQuestionDialog({
                           data-req-anchor={question.id === firstQuestionWithParentAnswerClearId ? 'review-step-answer-clear' : undefined}
                           className="relative"
                         >
-                        {question.id === firstQuestionWithParentAnswerClearId &&
-                          renderRequirementMarker('REVIEW_STEP-018', 'right-1 top-1')}
                         {getQuestionMatchInfo(question).needsManualSplit && (
                           <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
                             答案解析待人工拆分：当前内容保留在父题答案/解析区，请核对后拆到对应子题。
@@ -8682,8 +8720,6 @@ export function UploadQuestionDialog({
                               data-req-anchor={question.id === firstQuestionWithCardActionsId ? 'review-step-answer-link-icon' : undefined}
                               className="relative flex items-center gap-1"
                             >
-                              {question.id === firstQuestionWithCardActionsId &&
-                                renderRequirementMarker('REVIEW_STEP-005', 'right-0 -top-3')}
                               <label className="text-xs font-medium text-gray-500">【答案】</label>
                               <button
                                 type="button"
@@ -8828,8 +8864,6 @@ export function UploadQuestionDialog({
                               data-req-anchor={!firstQuestionWithParentAnswerClearId && question.id === firstQuestionWithSubAnswerClearId ? 'review-step-answer-clear' : undefined}
                               className="relative"
                             >
-                            {!firstQuestionWithParentAnswerClearId && question.id === firstQuestionWithSubAnswerClearId &&
-                              renderRequirementMarker('REVIEW_STEP-018', 'right-1 top-0')}
                             <div className="text-xs font-medium text-gray-500 mb-2">子题</div>
                             <div className="space-y-2 pr-1">
                             {(question.subQuestions || []).map((sub, subIndex) => (<Fragment key={sub.id}>
@@ -8838,7 +8872,7 @@ export function UploadQuestionDialog({
                                   <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium text-gray-700">{SUB_NUMBERS[subIndex] || `${subIndex + 1}`}</span>
                                     <select value={sub.questionType} onChange={(e) => handleUpdateSubQuestionType(question.id, sub.id, e.target.value)} className="px-1 py-0.5 text-[11px] border rounded bg-white h-5 text-gray-600">{questionTypes.map(type => (<option key={type} value={type}>{type}</option>))}</select>
-                                    {choiceQuestionTypes.includes(sub.questionType) && sub.questionType !== '判断题' && !isEnglishClozeQuestion && !isEnglishReadingQuestion && (
+                                    {choiceQuestionTypes.includes(sub.questionType) && sub.questionType !== '判断题' && !isEnglishClozeQuestion && (
                                       <span className="inline-flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1 text-[11px] text-gray-500">
                                         <span>选项</span>
                                         <button type="button" onClick={() => handleUpdateSubOptionCount(question.id, sub.id, getOptionCountForType(sub.questionType, sub.optionCount) - 1)} className="w-4 h-4 rounded hover:bg-gray-100">-</button>
@@ -8875,163 +8909,6 @@ export function UploadQuestionDialog({
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                                {/* 英语阅读理解：单选子题题干 = 子题文字 + 选项 */}
-                                {isReadingChoiceSubQuestion(question.questionType, sub.questionType) && (() => {
-                                  const subOptionCount = getOptionCountForType(sub.questionType, sub.optionCount);
-                                  const subSelectedOption = getAnswerOptionLetter(sub.questionType, sub.answer, sub.optionContents || {});
-                                  const subSelectedOptions = getAnswerOptionLetters(sub.questionType, sub.answer, sub.optionContents || {}, subOptionCount);
-                                  const hasValidSubSelectedOption = isOptionWithinCandidateRange(subSelectedOption, subOptionCount);
-                                  const canSelectReadingOptionInEdit = workMode !== 'questions-only' && questionViewMode === 'recognize';
-                                  const subStemLinkField: ManualLinkField = 'optionContent';
-                                  const isSubStemLinkActive =
-                                    manualLinkTarget?.questionId === question.id &&
-                                    manualLinkTarget.field === subStemLinkField &&
-                                    manualLinkTarget.subQuestionId === sub.id;
-                                  const subOptionTargetKey = getOptionTargetKey(question.id, sub.id);
-                                  const isSubStemLoading = isSubQuestionContentProcessing(question.id, sub.id);
-                                  return (
-                                    <div className="mb-2 pl-2 border-l-3 border-emerald-400 bg-emerald-50/70 rounded-r p-2 space-y-2">
-                                      {questionViewMode === 'recognize' && (
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1">
-                                          <label className="text-xs text-gray-500">子题题干</label>
-                                          {(questionViewMode === 'recognize' || workMode !== 'questions-only') && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => { e.stopPropagation(); handleDirectedManualLinkEntryClick(question.id, subStemLinkField, sub.id); }}
-                                              disabled={isProcessing || isSubQuestionAnyProcessing(question.id, sub.id)}
-                                              className={cn(
-                                                "p-0.5 rounded text-gray-300 transition-colors",
-                                                isSubStemLinkActive
-                                                  ? "bg-orange-50 text-orange-500"
-                                                  : "hover:text-orange-500 hover:bg-orange-50",
-                                                (isProcessing || isSubQuestionAnyProcessing(question.id, sub.id)) && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-gray-300"
-                                              )}
-                                              title="框选该子题题干和选项并自动拆分"
-                                            >
-                                              <Link2Icon className="w-3 h-3" />
-                                            </button>
-                                          )}
-                                        </div>
-                                        {questionViewMode === 'recognize' && (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              handleUpdateSubContent(question.id, sub.id, '');
-                                              handleClearSubOptions(question.id, sub.id);
-                                            }}
-                                            className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-0.5 transition-colors"
-                                            title="清空子题题干和选项内容"
-                                          >
-                                            <Trash2 className="w-3 h-3" /> 清空
-                                          </button>
-                                        )}
-                                      </div>
-                                      )}
-
-                                      {questionViewMode === 'recognize' && isSubStemLoading ? (
-                                        <div className="flex items-center gap-2 py-1">
-                                          <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
-                                          <span className="text-sm text-emerald-600">
-                                            题干识别中...
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          {questionViewMode === 'recognize' && (
-                                            <MathEditable
-                                              value={sub.content}
-                                              onChange={(val) => handleUpdateSubContent(question.id, sub.id, val)}
-                                              onSelectionChange={(selection) => handleContentSelectionChange(`${question.id}:${sub.id}`, selection)}
-                                              placeholder="请输入子题题干内容"
-                                              className="w-full text-sm bg-white"
-                                              minHeight="48px"
-                                              maxHeight="none"
-                                            />
-                                          )}
-
-                                          {questionViewMode === 'image' ? (
-                                            <div className="flex flex-wrap gap-2">
-                                              {Array.from({ length: subOptionCount }, (_, i) => {
-                                                const letter = OPTION_LETTERS[i];
-                                                if (workMode === 'questions-only') {
-                                                  return (<span key={letter} className="px-3 py-1.5 rounded border text-sm font-medium bg-white text-gray-600 border-gray-300">{letter}</span>);
-                                                }
-                                                const isSelected = hasValidSubSelectedOption && subSelectedOption === letter;
-                                                return (
-                                                  <button
-                                                    key={letter}
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); handleUpdateSubAnswer(question.id, sub.id, isSelected ? '' : letter); }}
-                                                    disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
-                                                    className={cn("px-3 py-1.5 rounded border text-sm font-medium transition-colors", isSelected ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-300 hover:border-emerald-300 hover:text-emerald-600", isSubQuestionAnyProcessing(question.id, sub.id) && "opacity-50 cursor-not-allowed")}
-                                                  >
-                                                    {letter}
-                                                  </button>
-                                                );
-                                              })}
-                                            </div>
-                                          ) : (
-                                            <div className="space-y-1.5">
-                                              {Array.from({ length: subOptionCount }, (_, i) => {
-                                                const letter = OPTION_LETTERS[i];
-                                                const isSelected = subSelectedOptions.includes(letter);
-                                                return (
-                                                  <div key={letter} className="flex items-center gap-2">
-                                                    {canSelectReadingOptionInEdit ? (
-                                                      <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          handleUpdateSubAnswer(
-                                                            question.id,
-                                                            sub.id,
-                                                            toggleChoiceAnswer(sub.questionType, sub.answer, letter, sub.optionContents || {}, subOptionCount)
-                                                          );
-                                                        }}
-                                                        disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
-                                                        className={cn(
-                                                          "w-6 h-6 rounded border text-xs font-medium transition-colors",
-                                                          isSelected
-                                                            ? "bg-emerald-500 text-white border-emerald-500"
-                                                            : "bg-white text-gray-600 border-gray-300 hover:border-emerald-300 hover:text-emerald-600",
-                                                          isSubQuestionAnyProcessing(question.id, sub.id) && "cursor-not-allowed opacity-50"
-                                                        )}
-                                                        title="点击设为答案"
-                                                      >
-                                                        {letter}
-                                                      </button>
-                                                    ) : (
-                                                      <span className="text-xs font-medium text-gray-500 w-4">{letter}</span>
-                                                    )}
-                                                    <input
-                                                      type="text"
-                                                      value={sub.optionContents?.[letter] ?? getDefaultOptionContent(sub.questionType, letter)}
-                                                      onChange={(e) => handleUpdateSubOptionContent(question.id, sub.id, letter, e.target.value)}
-                                                      placeholder={'选项 ' + letter}
-                                                      disabled={isSubQuestionAnyProcessing(question.id, sub.id)}
-                                                      className={cn(
-                                                        "flex-1 px-2 py-1 border rounded text-xs focus:outline-none focus:border-emerald-500 disabled:opacity-50 transition-colors",
-                                                        canSelectReadingOptionInEdit && isSelected
-                                                          ? "bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm shadow-emerald-100"
-                                                          : "bg-white border-gray-200"
-                                                      )}
-                                                    />
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          )}
-                                          {optionAnswerMatchFailedTargets.has(subOptionTargetKey) && !hasValidSubSelectedOption && (
-                                            <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-                                              未匹配到合适的选项，请检查候选项
-                                            </div>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
                                 {/* 编辑模式：主观题子题题干 */}
                                 {questionViewMode === 'recognize' && !choiceQuestionTypes.includes(sub.questionType) && (
                                   <div className="mb-2 pl-2 border-l-3 border-emerald-400 bg-emerald-50/70 rounded-r p-2">
@@ -9096,7 +8973,7 @@ export function UploadQuestionDialog({
                                     </>)}
                                   </div>
                                 )}
-                                {workMode === 'questions-only' && questionViewMode === 'recognize' && choiceQuestionTypes.includes(sub.questionType) && !isReadingChoiceSubQuestion(question.questionType, sub.questionType) && !isEnglishClozeQuestion && (
+                                {workMode === 'questions-only' && questionViewMode === 'recognize' && choiceQuestionTypes.includes(sub.questionType) && !isEnglishClozeQuestion && (
                                   <div className="mb-2 pl-2 border-l-3 border-emerald-400 bg-emerald-50/70 rounded-r p-2">
                                     {isSubQuestionContentProcessing(question.id, sub.id) ? (
                                       <div className="flex items-center gap-2 py-1"><Loader2 className="w-4 h-4 text-emerald-500 animate-spin" /><span className="text-sm text-emerald-600">题干识别中...</span></div>
@@ -9144,7 +9021,7 @@ export function UploadQuestionDialog({
                                   </div>
                                 )}
                                 {/* 客观题选项区域 */}
-                                {choiceQuestionTypes.includes(sub.questionType) && !isReadingChoiceSubQuestion(question.questionType, sub.questionType) && (() => {
+                                {choiceQuestionTypes.includes(sub.questionType) && (() => {
                                   const subOptionCount = getOptionCountForType(sub.questionType, sub.optionCount);
                                   const subSelectedOption = getAnswerOptionLetter(sub.questionType, sub.answer, sub.optionContents || {});
                                   const subSelectedOptions = getAnswerOptionLetters(sub.questionType, sub.answer, sub.optionContents || {}, subOptionCount);

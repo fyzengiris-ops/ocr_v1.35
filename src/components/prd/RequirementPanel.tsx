@@ -130,16 +130,32 @@ function RequirementDetail({
         </div>
       </DetailBlock>
 
-      <DetailBlock title="操作说明">
-        <div className="space-y-3">
-          {operationSections.map((item) => (
-            <div key={item.category}>
-              <div className="font-medium text-gray-800">{item.category}</div>
-              <ReadableText value={item.content} />
-            </div>
-          ))}
-        </div>
-      </DetailBlock>
+      {operationSections.length > 0 && (
+        <DetailBlock title="操作说明">
+          <div className="space-y-3">
+            {operationSections.map((item) => (
+              <div key={item.category}>
+                <div className="font-medium text-gray-800">{item.category}</div>
+                <ReadableText value={item.content} />
+              </div>
+            ))}
+          </div>
+        </DetailBlock>
+      )}
+      {requirement.aiPrompts?.length ? (
+        <DetailBlock title="AI 提示词">
+          <div className="space-y-3">
+            {requirement.aiPrompts.map((item) => (
+              <div key={item.title}>
+                <div className="font-medium text-gray-800">{item.title}</div>
+                <div className="mt-1 text-gray-500">{item.trigger}</div>
+                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-[11px] leading-4">{item.prompt}</pre>
+                <div className="mt-1 text-gray-600">回填：{item.result}</div>
+              </div>
+            ))}
+          </div>
+        </DetailBlock>
+      ) : null}
     </div>
   );
 }
